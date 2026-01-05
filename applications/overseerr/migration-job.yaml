@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-config-pv-temp
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: "192.168.1.75"
+    path: "/mnt/Store/nomad/jellyseerr/config"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-config-pvc-temp
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+  volumeName: nfs-config-pv-temp
+  storageClassName: ""
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migration-job
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: migration
+        image: alpine:latest
+        command: ["/bin/sh", "-c"]
+        args:
+        - apk add rsync && rsync -avh /from/ /to/
+        volumeMounts:
+        - name: from
+          mountPath: /from
+        - name: to
+          mountPath: /to
+      volumes:
+      - name: from
+        persistentVolumeClaim:
+          claimName: nfs-config-pvc-temp
+      - name: to
+        persistentVolumeClaim:
+          claimName: overseerr-config

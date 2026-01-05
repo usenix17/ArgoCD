@@ -7,26 +7,8 @@ metadata:
   name: overseerr
   labels:
     name: overseerr
-
 ---
-# 2. PersistentVolume (NFS)
-# Defines the NFS volume that holds the application's configuration.
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: overseerr-config-pv
-spec:
-  capacity:
-    storage: 1Gi
-  accessModes:
-    - ReadWriteMany
-  persistentVolumeReclaimPolicy: Retain
-  nfs:
-    server: "192.168.1.75"
-    path: "/mnt/Store/nomad/jellyseerr/config"
-
----
-# 3. PersistentVolumeClaim
+# 2. PersistentVolumeClaim
 # A claim for the NFS volume, which the Overseerr pod will use.
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -35,12 +17,12 @@ metadata:
   namespace: overseerr
 spec:
   accessModes:
-    - ReadWriteMany
+    - ReadWriteOnce
   resources:
     requests:
       storage: 1Gi
-  volumeName: overseerr-config-pv
-  storageClassName: ""
+  storageClassName: longhorn
+
 
 ---
 # 4. Deployment
@@ -53,7 +35,7 @@ metadata:
   labels:
     app: overseerr
 spec:
-  replicas: 1
+  replicas: 0
   selector:
     matchLabels:
       app: overseerr

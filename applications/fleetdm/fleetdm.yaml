@@ -8,7 +8,8 @@ metadata:
 # kubectl create secret generic fleetdm-secrets -n fleetdm \
 #   --from-literal=mysql-root-password='YOUR_MYSQL_ROOT_PASSWORD' \
 #   --from-literal=mysql-password='YOUR_FLEET_DB_PASSWORD' \
-#   --from-literal=jwt-key='YOUR_JWT_KEY_HERE'
+#   --from-literal=jwt-key='YOUR_JWT_KEY_HERE' \
+#   --from-literal=server-private-key="$(openssl rand -base64 32)"
 
 ---
 # MySQL Database
@@ -231,6 +232,11 @@ spec:
             secretKeyRef:
               name: fleetdm-secrets
               key: jwt-key
+        - name: FLEET_SERVER_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: fleetdm-secrets
+              key: server-private-key
         - name: FLEET_LOGGING_JSON
           value: "true"
         - name: FLEET_SERVER_TLS

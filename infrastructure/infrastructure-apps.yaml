@@ -45,7 +45,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: infrastructure/metallb/config
   destination:
@@ -114,7 +114,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: infrastructure/cert-manager/config
   destination:
@@ -226,7 +226,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: infrastructure/traefik/config
   destination:
@@ -255,7 +255,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: infrastructure/longhorn
   destination:
@@ -303,7 +303,7 @@ spec:
           config:
             repositories: |
               - type: git
-                url: https://github.com/sashakarcz/ArgoCD.git
+                url: https://github.com/usenix17/ArgoCD.git
 
         configs:
           params:
@@ -344,7 +344,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: applications
     directory:

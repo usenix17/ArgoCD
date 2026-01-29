@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: applications/apprise
   destination:
@@ -28,7 +28,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: applications/borgwarehouse
   destination:
@@ -50,7 +50,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: applications/cometdb
   destination:
@@ -72,7 +72,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: applications/freescout
   destination:
@@ -94,7 +94,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: applications/gatus
   destination:
@@ -116,7 +116,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: applications/homeassistant
   destination:
@@ -138,7 +138,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: applications/interstellar
   destination:
@@ -160,7 +160,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: applications/jellyfin
   destination:
@@ -182,7 +182,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: applications/librespeed
   destination:
@@ -204,7 +204,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: applications/metabase
   destination:
@@ -226,7 +226,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: applications/metrics
   destination:
@@ -248,7 +248,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: applications/nocodb
   destination:
@@ -270,7 +270,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: applications/overseerr
   destination:
@@ -292,7 +292,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: applications/privatebin
   destination:
@@ -314,7 +314,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: applications/vault
   destination:
@@ -336,7 +336,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: applications/weather
   destination:
@@ -358,7 +358,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/sashakarcz/ArgoCD.git
+    repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
     path: applications/yourls
   destination:

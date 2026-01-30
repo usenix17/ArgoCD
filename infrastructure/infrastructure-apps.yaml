@@ -395,6 +395,8 @@ spec:
         duration: 5s
         factor: 2
         maxDuration: 3m
+
+---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

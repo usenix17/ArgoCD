@@ -50,8 +50,7 @@ spec:
                   method: POST
                   body: |
                     {
-                      "username": "ArgoCD",
-                      "content": "✅ **{{.app.metadata.name}}** synced successfully.\nRevision: `{{.app.status.sync.revision | trunc 7}}`\nHealth: {{.app.status.health.status}}"
+                      "text": "✅ **{{.app.metadata.name}}** synced successfully.\nRevision: `{{.app.status.sync.revision | trunc 7}}`\nHealth: {{.app.status.health.status}}"
                     }
             template.app-sync-failed: |
               webhook:
@@ -59,8 +58,7 @@ spec:
                   method: POST
                   body: |
                     {
-                      "username": "ArgoCD",
-                      "content": "❌ **{{.app.metadata.name}}** sync failed.\n{{.app.status.operationState.message}}"
+                      "text": "❌ **{{.app.metadata.name}}** sync failed.\n{{.app.status.operationState.message}}"
                     }
             template.app-health-degraded: |
               webhook:
@@ -68,8 +66,7 @@ spec:
                   method: POST
                   body: |
                     {
-                      "username": "ArgoCD",
-                      "content": "⚠️ **{{.app.metadata.name}}** health is **Degraded**."
+                      "text": "⚠️ **{{.app.metadata.name}}** health is **Degraded**."
                     }
             trigger.on-sync-succeeded: |
               - when: app.status.operationState.phase in ['Succeeded']

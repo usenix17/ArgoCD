@@ -39,34 +39,37 @@ spec:
         notifications:
           enabled: true
           cm:
-            service.webhook.discord: |
-              url: $notif-discord-url
+            service.webhook.apprise: |
+              url: http://apprise.apprise.svc:8000/notify/argocd
               headers:
               - name: Content-Type
                 value: application/json
             template.app-sync-succeeded: |
               webhook:
-                discord:
+                apprise:
                   method: POST
                   body: |
                     {
-                      "text": "✅ **{{.app.metadata.name}}** synced successfully.\nRevision: `{{.app.status.sync.revision | trunc 7}}`\nHealth: {{.app.status.health.status}}"
+                      "title": "{{.app.metadata.name}}",
+                      "body": "✅ **{{.app.metadata.name}}** synced successfully.\nRevision: `{{.app.status.sync.revision | trunc 7}}`\nHealth: {{.app.status.health.status}}"
                     }
             template.app-sync-failed: |
               webhook:
-                discord:
+                apprise:
                   method: POST
                   body: |
                     {
-                      "text": "❌ **{{.app.metadata.name}}** sync failed.\n{{.app.status.operationState.message}}"
+                      "title": "{{.app.metadata.name}}",
+                      "body": "❌ **{{.app.metadata.name}}** sync failed.\n{{.app.status.operationState.message}}"
                     }
             template.app-health-degraded: |
               webhook:
-                discord:
+                apprise:
                   method: POST
                   body: |
                     {
-                      "text": "⚠️ **{{.app.metadata.name}}** health is **Degraded**."
+                      "title": "{{.app.metadata.name}}",
+                      "body": "⚠️ **{{.app.metadata.name}}** health is **Degraded**."
                     }
             trigger.on-sync-succeeded: |
               - when: app.status.operationState.phase in ['Succeeded']
@@ -83,7 +86,7 @@ spec:
               - on-health-degraded
             subscriptions: |
               - recipients:
-                - discord:
+                - apprise:
                 triggers:
                 - on-sync-succeeded
                 - on-sync-failed

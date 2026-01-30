@@ -204,6 +204,9 @@ spec:
     - namespaceSelector:
         matchLabels:
           name: ingress-nginx
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: argocd
     ports:
     - protocol: TCP
       port: 8000

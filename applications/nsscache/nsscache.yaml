@@ -22,7 +22,7 @@ data:
       use_tls: true
       skip_verify: true
       bind_dn: "uid=svc_nsscache,cn=users,cn=accounts,dc=starnix,dc=net"
-      base_dn: "dc=starnix,dc=net"
+      base_dn: "cn=accounts,dc=starnix,dc=net"
       user_filter: "(objectClass=posixAccount)"
       group_filter: "(objectClass=posixGroup)"
       shadow_filter: "(objectClass=shadowAccount)"

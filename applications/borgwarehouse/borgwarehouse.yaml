@@ -62,6 +62,20 @@ spec:
       storage: 2Ti
 
 ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: borgwarehouse-config
+  namespace: borgwarehouse
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: longhorn
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -101,9 +115,8 @@ spec:
         - configMapRef: { name: borgwarehouse-config }
         - secretRef: { name: borgwarehouse-secrets }
         volumeMounts:
-        - name: nfs-storage
+        - name: config-storage
           mountPath: /home/borgwarehouse/app/config
-          subPath: config
         - name: nfs-storage
           mountPath: /home/borgwarehouse/.ssh
           subPath: ssh
@@ -123,6 +136,9 @@ spec:
           mountPath: /run
           subPath: run
       volumes:
+      - name: config-storage
+        persistentVolumeClaim:
+          claimName: borgwarehouse-config
       - name: nfs-storage
         persistentVolumeClaim:
           claimName: borgwarehouse-nfs-pvc

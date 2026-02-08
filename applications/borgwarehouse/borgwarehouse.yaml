@@ -189,3 +189,32 @@ spec:
   tls:
   - hosts: ["borgwarehouse.starnix.net"]
     secretName: borgwarehouse-tls-prod
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: borgwarehouse-cron
+  namespace: borgwarehouse
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: cron
+            image: curlimages/curl
+            command:
+            - sh
+            - -c
+            - |
+              curl -s -X POST http://borgwarehouse-svc:3000/api/v1/cron/status -H "Authorization: Bearer $CRONJOB_KEY" &&
+              curl -s -X POST http://borgwarehouse-svc:3000/api/v1/cron/storage -H "Authorization: Bearer $CRONJOB_KEY"
+            env:
+            - name: CRONJOB_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: borgwarehouse-secrets
+                  key: CRONJOB_KEY
+          restartPolicy: OnFailure

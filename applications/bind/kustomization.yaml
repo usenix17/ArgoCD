@@ -7,5 +7,4 @@ configMapGenerator:
     namespace: bind
     files:
       - starnix.net.zone
-    options:
-      disableNameSuffixHash: true
+

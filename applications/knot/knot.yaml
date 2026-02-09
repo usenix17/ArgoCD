@@ -23,7 +23,7 @@ data:
 
     zone:
       - domain: starnix.net
-        file: /etc/knot/zones/starnix.net.zone
+        file: /config/zones/starnix.net.zone
         zonefile-load: whole
 ---
 apiVersion: apps/v1
@@ -55,7 +55,6 @@ spec:
       containers:
       - name: knot
         image: cznic/knot:3.4
-        args: ["-c", "/etc/knot/knot.conf"]
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -81,10 +80,10 @@ spec:
             memory: 128Mi
         volumeMounts:
         - name: knot-config
-          mountPath: /etc/knot/knot.conf
+          mountPath: /config/knot.conf
           subPath: knot.conf
         - name: knot-zone
-          mountPath: /etc/knot/zones
+          mountPath: /config/zones
         - name: rundir
           mountPath: /rundir
         livenessProbe:
@@ -103,8 +102,6 @@ spec:
           exec:
             command:
             - knotc
-            - -c
-            - /etc/knot/knot.conf
             - status
           initialDelaySeconds: 5
           periodSeconds: 10

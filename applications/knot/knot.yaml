@@ -152,16 +152,18 @@ spec:
         - /bin/sh
         - -c
         - |
+          export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
           until apk update && apk add --no-cache curl knot-utils; do
             echo "Waiting for package install..."
             sleep 5
           done
+          echo "knotc location: $(which knotc 2>&1 || echo 'not found')"
           LAST=""
           while true; do
             CURRENT=$(readlink /storage/zones 2>/dev/null)
             if [ "$CURRENT" != "$LAST" ] && [ -n "$CURRENT" ]; then
               echo "Zone update detected, reloading..."
-              knotc -s /rundir/knot.sock zone-reload starnix.net 2>&1 || true
+              /usr/sbin/knotc -s /rundir/knot.sock zone-reload starnix.net 2>&1 || true
               curl -s -X POST http://apprise.apprise.svc:8000/notify/argocd \
                 -H "Content-Type: application/json" \
                 -d '{"title": "knot-dns", "body": "🔄 **starnix.net** zone reloaded from git."}' || true

@@ -230,6 +230,7 @@ spec:
             port: 80
           initialDelaySeconds: 60
           periodSeconds: 10
+          timeoutSeconds: 5
       volumes:
       - name: freescout-data
         persistentVolumeClaim:

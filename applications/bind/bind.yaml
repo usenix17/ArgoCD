@@ -1,0 +1,304 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bind
+  labels:
+    name: bind
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bind-config
+  namespace: bind
+data:
+  named.conf: |
+    options {
+        directory "/var/cache/bind";
+        listen-on { any; };
+        listen-on-v6 { any; };
+        allow-query { any; };
+        recursion no;
+        allow-transfer { none; };
+        dnssec-validation no;
+    };
+
+    zone "starnix.net" IN {
+        type master;
+        file "/etc/bind/zones/starnix.net.zone";
+        allow-update { none; };
+    };
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bind-zone
+  namespace: bind
+data:
+  starnix.net.zone: |
+    $ORIGIN starnix.net.
+    $TTL 86400
+    @                       IN  SOA   ns1.starnix.net. admin.starnix.net. (
+                                      2025021001 ; serial
+                                      3600       ; refresh
+                                      900        ; retry
+                                      1209600    ; expire
+                                      3600       ; minimum
+                                      )
+    ; NS records
+    @                       IN  NS    ns1.starnix.net.
+    ns1                     IN  A     192.168.7.210
+    ; A records for apex
+    @                       IN  A     104.21.16.1
+    @                       IN  A     104.21.32.1
+    @                       IN  A     104.21.48.1
+    @                       IN  A     104.21.64.1
+    @                       IN  A     104.21.80.1
+    @                       IN  A     104.21.96.1
+    @                       IN  A     104.21.112.1
+    ; Host records
+    3cx                     IN  A     192.168.1.31
+    actual                  IN  A     192.168.1.35
+    ai                      IN  A     192.168.1.86
+    amadeus                 IN  A     104.26.6.194
+    amadeus                 IN  A     172.67.75.83
+    amadeus                 IN  A     104.26.7.194
+    blog                    IN  A     172.66.47.197
+    blog                    IN  A     172.66.44.59
+    borg                    IN  A     192.168.7.204
+    bork            1200    IN  A     192.168.1.86
+    cometdb                 IN  A     192.168.1.33
+    finnmac                 IN  A     192.168.1.15
+    gnome                   IN  A     192.168.1.233
+    hb                      IN  A     192.168.1.86
+    hbbr                    IN  A     192.168.1.35
+    hbbs                    IN  A     192.168.1.35
+    heimdal                 IN  A     192.168.1.1
+    hello                   IN  A     192.168.1.169
+    help                    IN  A     104.26.6.194
+    help                    IN  A     172.67.75.83
+    help                    IN  A     104.26.7.194
+    ingress                 IN  A     192.168.7.203
+    ipa                     IN  A     104.26.6.194
+    ipa                     IN  A     104.26.7.194
+    ipa                     IN  A     172.67.75.83
+    ipa                     IN  A     100.69.0.28
+    ipa-ca                  IN  A     192.168.1.24
+    ipa1            1200    IN  A     192.168.1.24
+    jellyfin                IN  A     104.21.16.1
+    jellyfin                IN  A     104.21.32.1
+    jellyfin                IN  A     104.21.48.1
+    jellyfin                IN  A     104.21.64.1
+    jellyfin                IN  A     104.21.80.1
+    jellyfin                IN  A     104.21.96.1
+    jellyfin                IN  A     104.21.112.1
+    lidarr                  IN  A     192.168.1.86
+    llama                   IN  A     104.26.6.194
+    llama                   IN  A     104.26.7.194
+    llama                   IN  A     172.67.75.83
+    log                     IN  A     192.168.1.35
+    media                   IN  A     104.21.16.1
+    media                   IN  A     104.21.32.1
+    media                   IN  A     104.21.48.1
+    media                   IN  A     104.21.64.1
+    media                   IN  A     104.21.80.1
+    media                   IN  A     104.21.96.1
+    media                   IN  A     104.21.112.1
+    memegen                 IN  A     104.21.16.1
+    memegen                 IN  A     104.21.32.1
+    memegen                 IN  A     104.21.48.1
+    memegen                 IN  A     104.21.64.1
+    memegen                 IN  A     104.21.80.1
+    memegen                 IN  A     104.21.96.1
+    memegen                 IN  A     104.21.112.1
+    mesh                    IN  A     172.16.5.143
+    mimir                   IN  A     192.168.1.75
+    ntfy                    IN  A     104.21.16.1
+    ntfy                    IN  A     104.21.32.1
+    ntfy                    IN  A     104.21.48.1
+    ntfy                    IN  A     104.21.64.1
+    ntfy                    IN  A     104.21.80.1
+    ntfy                    IN  A     104.21.96.1
+    ntfy                    IN  A     104.21.112.1
+    nzb                     IN  A     192.168.1.86
+    odin                    IN  A     184.97.157.56
+    offsite-nas             IN  A     100.65.253.61
+    print                   IN  A     192.168.1.62
+    selene          1200    IN  A     172.16.4.108
+    send                    IN  A     104.21.59.107
+    send                    IN  A     172.67.223.92
+    sky                     IN  A     172.16.5.227
+    soho                    IN  A     172.67.223.92
+    soho                    IN  A     104.21.59.107
+    sonarr                  IN  A     192.168.1.86
+    tel                     IN  A     104.26.6.194
+    tel                     IN  A     104.26.7.194
+    tel                     IN  A     172.67.75.83
+    unpoller                IN  A     192.168.1.86
+    vault                   IN  A     104.26.6.194
+    vault                   IN  A     104.26.7.194
+    vault                   IN  A     172.67.75.83
+    wazuh                   IN  A     192.168.1.86
+    ; CNAME records
+    apprise                 IN  CNAME ingress
+    argocd                  IN  CNAME ingress
+    borgwarehouse           IN  CNAME ingress
+    fleet                   IN  CNAME ingress
+    freescout               IN  CNAME ingress
+    go                      IN  CNAME ingress
+    ha                      IN  CNAME jellyfin
+    krampus                 IN  CNAME jellyfin
+    kronos                  IN  CNAME mimir
+    longhorn                IN  CNAME ingress
+    mathesar                IN  CNAME ingress
+    metabase                IN  CNAME ingress
+    nova                    IN  CNAME jellyfin
+    nsscache                IN  CNAME ingress
+    privatebin              IN  CNAME jellyfin
+    speed                   IN  CNAME ingress
+    status                  IN  CNAME ingress
+    trudesk                 IN  CNAME ingress
+    vid                     IN  CNAME ingress
+    weather                 IN  CNAME ingress
+    ; SSHFP records
+    bork            1200    IN  SSHFP 1 1 2A1E2CD3B9ADEC7966EE43D8AFA8DA8C01350891
+    bork            1200    IN  SSHFP 1 2 81CF51B4AA8B9F4A4913850A71DF2BF911D12F9A4428DD85407D13EAF1578699
+    bork            1200    IN  SSHFP 3 1 067DFE898CB3D7293A2B74168EA9FA753AD1B36E
+    bork            1200    IN  SSHFP 3 2 1E14D033D643D850318996DE553815D82CDA35CBC3D660BC0F1F6A5A02446F83
+    bork            1200    IN  SSHFP 4 1 375C9741489719B8B36E551F08F79667A7C5F2D3
+    bork            1200    IN  SSHFP 4 2 74188613FC435121E339486D3EEB9E57A94E476A23B56BF3A75E39410F0D4055
+    hecate          1200    IN  SSHFP 3 1 BB648ACE26CF96D719E765E4D5C3C89FDCBD9081
+    hecate          1200    IN  SSHFP 3 2 7A8DD2DE1EFE719B0EF3D2D0F2D7154317DC3DE411C4A2EE4531CE6A1E1B3339
+    hecate          1200    IN  SSHFP 1 1 E786CF7F8167C895E7722FF54CB31EDD0451D86E
+    hecate          1200    IN  SSHFP 1 2 456AAC56DB610A46C0415DE1BD431D8A6BD902643A5A220CDEB9F074BEF03A3B
+    hecate          1200    IN  SSHFP 4 1 D8F713DA4012F3F5E9F8E05D3A4EE99E43683A7B
+    hecate          1200    IN  SSHFP 4 2 4972B3DB06272113109D3383AF74A6F2C7D7E1CC8971C316E3F1DBB281D435E3
+    ipa1            1200    IN  SSHFP 1 1 E9AEB2A71FE4E6155BFD0B8DDADF421DDEEBF7EA
+    ipa1            1200    IN  SSHFP 1 2 D327DCE3134B1F4B108B1325792956034A06C9D0598094FA8BD07A51C6A1DED9
+    ipa1            1200    IN  SSHFP 3 1 47EEA44E61C6EB0D2314D442EE25DAD00CB1D4B0
+    ipa1            1200    IN  SSHFP 3 2 990657EBB41421010A00C9F3C0C06E86CD828586E6996225E6F2AACDC58A01DE
+    ipa1            1200    IN  SSHFP 4 1 008C6D5E208E48E38410B88D62804305B2051309
+    ipa1            1200    IN  SSHFP 4 2 5DD8F1074B853C5BD1BFAB5D534F040AA8205925FF5F673A607D5AD3381EB940
+    ; Kerberos / LDAP SRV records
+    _kerberos               IN  TXT   "STARNIX.NET"
+    _kerberos               IN  URI   0 100 "krb5srv:m:tcp:ipa1.starnix.net."
+    _kerberos               IN  URI   0 100 "krb5srv:m:udp:ipa1.starnix.net."
+    _kpasswd                IN  URI   0 100 "krb5srv:m:tcp:ipa1.starnix.net."
+    _kpasswd                IN  URI   0 100 "krb5srv:m:udp:ipa1.starnix.net."
+    _kerberos._tcp.Default-First-Site-Name._sites.dc._msdcs IN SRV 0 100 88 ipa1.starnix.net.
+    _ldap._tcp.Default-First-Site-Name._sites.dc._msdcs     IN SRV 0 100 389 ipa1.starnix.net.
+    _kerberos._udp.Default-First-Site-Name._sites.dc._msdcs IN SRV 0 100 88 ipa1.starnix.net.
+    _kerberos._tcp.dc._msdcs                                IN SRV 0 100 88 ipa1.starnix.net.
+    _ldap._tcp.dc._msdcs                                    IN SRV 0 100 389 ipa1.starnix.net.
+    _kerberos._udp.dc._msdcs                                IN SRV 0 100 88 ipa1.starnix.net.
+    _kerberos._tcp          IN  SRV   0 100 88  ipa1.starnix.net.
+    _kerberos-master._tcp   IN  SRV   0 100 88  ipa1.starnix.net.
+    _kpasswd._tcp           IN  SRV   0 100 464 ipa1.starnix.net.
+    _ldap._tcp              IN  SRV   0 100 389 ipa1.starnix.net.
+    _kerberos._udp          IN  SRV   0 100 88  ipa1.starnix.net.
+    _kerberos-master._udp   IN  SRV   0 100 88  ipa1.starnix.net.
+    _kpasswd._udp           IN  SRV   0 100 464 ipa1.starnix.net.
+    _ntp._udp               IN  SRV   0 100 123 ipa1.starnix.net.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bind
+  namespace: bind
+  labels:
+    app: bind
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: bind
+  template:
+    metadata:
+      labels:
+        app: bind
+    spec:
+      tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "node-role.kubernetes.io/master"
+        operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: bind
+        image: internetsystemsconsortium/bind9:9.20
+        ports:
+        - containerPort: 53
+          name: dns-tcp
+          protocol: TCP
+        - containerPort: 53
+          name: dns-udp
+          protocol: UDP
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        volumeMounts:
+        - name: bind-config
+          mountPath: /etc/bind/named.conf
+          subPath: named.conf
+        - name: bind-zone
+          mountPath: /etc/bind/zones
+        livenessProbe:
+          exec:
+            command:
+            - dig
+            - "@127.0.0.1"
+            - starnix.net
+            - SOA
+            - +short
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - dig
+            - "@127.0.0.1"
+            - starnix.net
+            - SOA
+            - +short
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      volumes:
+      - name: bind-config
+        configMap:
+          name: bind-config
+      - name: bind-zone
+        configMap:
+          name: bind-zone
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bind
+  namespace: bind
+  labels:
+    app: bind
+spec:
+  type: LoadBalancer
+  loadBalancerIP: 192.168.7.210
+  selector:
+    app: bind
+  ports:
+  - name: dns-tcp
+    port: 53
+    targetPort: 53
+    protocol: TCP
+  - name: dns-udp
+    port: 53
+    targetPort: 53
+    protocol: UDP

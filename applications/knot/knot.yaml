@@ -152,6 +152,7 @@ spec:
         - /bin/sh
         - -c
         - |
+          apk update > /dev/null 2>&1
           apk add --no-cache curl knot-utils > /dev/null 2>&1
           LAST=""
           while true; do

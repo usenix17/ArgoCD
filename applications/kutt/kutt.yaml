@@ -162,7 +162,7 @@ spec:
           done
       containers:
       - name: kutt
-        image: kutt/kutt
+        image: kutt/kutt:main
         ports:
         - containerPort: 3000
         env:

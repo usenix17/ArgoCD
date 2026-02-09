@@ -19,9 +19,6 @@ spec:
           recurringJobSelector:
             enable: true
             jobList: '[{"name":"daily-backup","isGroup":false},{"name":"hourly-snapshot","isGroup":false}]'
-        defaultSettings:
-          backupTarget: s3://longhorn-backup@us-east-1/
-          backupTargetCredentialSecret: minio-secret
         tolerations:
           - key: "node-role.kubernetes.io/control-plane"
             operator: "Exists"

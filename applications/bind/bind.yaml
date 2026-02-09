@@ -102,8 +102,11 @@ spec:
         readinessProbe:
           exec:
             command:
-            - /usr/sbin/rndc
-            - status
+            - dig
+            - "@127.0.0.1"
+            - starnix.net
+            - SOA
+            - +short
           initialDelaySeconds: 5
           periodSeconds: 10
           timeoutSeconds: 5

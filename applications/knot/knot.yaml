@@ -23,7 +23,7 @@ data:
 
     zone:
       - domain: starnix.net
-        file: /config/zones/starnix.net.zone
+        file: /storage/zones/starnix.net.zone
         zonefile-load: whole
 ---
 apiVersion: apps/v1
@@ -52,6 +52,18 @@ spec:
       - key: "node-role.kubernetes.io/master"
         operator: "Exists"
         effect: "NoSchedule"
+      securityContext:
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+      volumes:
+      - name: knot-config
+        configMap:
+          name: knot-config
+      - name: zone-data
+        emptyDir: {}
+      - name: rundir
+        emptyDir: {}
       containers:
       - name: knot
         image: cznic/knot:3.4
@@ -71,10 +83,10 @@ spec:
             memory: 128Mi
         volumeMounts:
         - name: knot-config
-          mountPath: /config/knot.conf
+          mountPath: /etc/knot/knot.conf
           subPath: knot.conf
-        - name: knot-zone
-          mountPath: /config/zones
+        - name: zone-data
+          mountPath: /storage
         - name: rundir
           mountPath: /rundir
         livenessProbe:
@@ -85,28 +97,68 @@ spec:
             - starnix.net
             - SOA
             - +short
-          initialDelaySeconds: 10
+          initialDelaySeconds: 30
           periodSeconds: 30
           timeoutSeconds: 5
           failureThreshold: 3
         readinessProbe:
           exec:
             command:
-            - knotc
-            - status
-          initialDelaySeconds: 5
+            - kdig
+            - "@127.0.0.1"
+            - starnix.net
+            - SOA
+            - +short
+          initialDelaySeconds: 10
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
-      volumes:
-      - name: knot-config
-        configMap:
-          name: knot-config
-      - name: knot-zone
-        configMap:
-          name: knot-zone
-      - name: rundir
-        emptyDir: {}
+      - name: git-sync
+        image: registry.k8s.io/git-sync/git-sync:v4.4.0
+        args:
+        - --repo=https://github.com/usenix17/dns.git
+        - --branch=main
+        - --root=/tmp/git
+        - --dest=zones
+        - --period=60s
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+        volumeMounts:
+        - name: zone-data
+          mountPath: /tmp/git
+      - name: reloader
+        image: cznic/knot:3.4
+        command:
+        - /bin/sh
+        - -c
+        - |
+          LAST=""
+          while true; do
+            CURRENT=$(readlink /storage/zones 2>/dev/null)
+            if [ "$CURRENT" != "$LAST" ] && [ -n "$CURRENT" ]; then
+              echo "Zone update detected, reloading..."
+              knotc -s /rundir/knot.sock zone-reload starnix.net 2>&1 || true
+              LAST="$CURRENT"
+            fi
+            sleep 5
+          done
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 50m
+            memory: 32Mi
+        volumeMounts:
+        - name: zone-data
+          mountPath: /storage
+        - name: rundir
+          mountPath: /rundir
 ---
 apiVersion: v1
 kind: Service

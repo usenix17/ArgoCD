@@ -55,15 +55,6 @@ spec:
       containers:
       - name: knot
         image: cznic/knot:3.4
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
-            add:
-            - NET_BIND_SERVICE
-            - SETUID
-            - SETGID
         ports:
         - containerPort: 53
           name: dns-tcp

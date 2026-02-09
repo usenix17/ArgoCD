@@ -152,8 +152,10 @@ spec:
         - /bin/sh
         - -c
         - |
-          apk update > /dev/null 2>&1
-          apk add --no-cache curl knot-utils > /dev/null 2>&1
+          until apk update && apk add --no-cache curl knot-utils; do
+            echo "Waiting for package install..."
+            sleep 5
+          done
           LAST=""
           while true; do
             CURRENT=$(readlink /storage/zones 2>/dev/null)

@@ -79,8 +79,7 @@ spec:
             memory: 128Mi
         volumeMounts:
         - name: knot-config
-          mountPath: /config/knot.conf
-          subPath: knot.conf
+          mountPath: /config
         - name: zone-data
           mountPath: /storage
         - name: rundir

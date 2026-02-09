@@ -16,6 +16,9 @@ spec:
       values: |
         persistence:
           defaultClassReplicaCount: 3
+          recurringJobSelector:
+            enable: true
+            jobList: '[{"name":"daily-backup","isGroup":false},{"name":"hourly-snapshot","isGroup":false}]'
         tolerations:
           - key: "node-role.kubernetes.io/control-plane"
             operator: "Exists"

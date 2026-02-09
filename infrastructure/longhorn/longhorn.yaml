@@ -15,7 +15,7 @@ spec:
       releaseName: longhorn
       values: |
         persistence:
-          defaultClassReplicaCount: 1
+          defaultClassReplicaCount: 3
         tolerations:
           - key: "node-role.kubernetes.io/control-plane"
             operator: "Exists"

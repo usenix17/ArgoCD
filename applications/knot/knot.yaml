@@ -63,6 +63,7 @@ spec:
       containers:
       - name: knot
         image: cznic/knot:3.4
+        command: ["knotd"]
         ports:
         - containerPort: 53
           name: dns-tcp

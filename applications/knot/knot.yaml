@@ -52,10 +52,6 @@ spec:
       - key: "node-role.kubernetes.io/master"
         operator: "Exists"
         effect: "NoSchedule"
-      securityContext:
-        runAsUser: 101
-        runAsGroup: 101
-        fsGroup: 101
       volumes:
       - name: knot-config
         configMap:

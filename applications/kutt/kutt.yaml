@@ -1,0 +1,261 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kutt
+
+---
+# Note: Create secrets separately before applying this manifest:
+# kubectl create secret generic kutt-secrets -n kutt \
+#   --from-literal=postgres-password="$(openssl rand -base64 24)" \
+#   --from-literal=jwt-secret="$(openssl rand -base64 32)"
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kutt-postgres-data
+  namespace: kutt
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: longhorn
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kutt-data
+  namespace: kutt
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: longhorn
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: kutt
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "node-role.kubernetes.io/master"
+        operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: postgres
+        image: postgres:16-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: kutt
+        - name: POSTGRES_USER
+          value: kutt
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kutt-secrets
+              key: postgres-password
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - kutt
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - kutt
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: postgres-data
+        persistentVolumeClaim:
+          claimName: kutt-postgres-data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: kutt
+spec:
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kutt
+  namespace: kutt
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: kutt
+  template:
+    metadata:
+      labels:
+        app: kutt
+    spec:
+      tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "node-role.kubernetes.io/master"
+        operator: "Exists"
+        effect: "NoSchedule"
+      initContainers:
+      - name: wait-for-postgres
+        image: postgres:16-alpine
+        command:
+        - sh
+        - -c
+        - |
+          until pg_isready -h postgres -U kutt; do
+            echo "Waiting for PostgreSQL..."
+            sleep 5
+          done
+      containers:
+      - name: kutt
+        image: kutt/kutt
+        ports:
+        - containerPort: 3000
+        env:
+        - name: DB_CLIENT
+          value: pg
+        - name: DB_HOST
+          value: postgres
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_NAME
+          value: kutt
+        - name: DB_USER
+          value: kutt
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kutt-secrets
+              key: postgres-password
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: kutt-secrets
+              key: jwt-secret
+        - name: DEFAULT_DOMAIN
+          value: go.starnix.net
+        - name: SITE_NAME
+          value: Kutt
+        - name: DISALLOW_REGISTRATION
+          value: "true"
+        - name: DISALLOW_ANONYMOUS_LINKS
+          value: "true"
+        - name: MAIL_ENABLED
+          value: "false"
+        volumeMounts:
+        - name: kutt-data
+          mountPath: /var/lib/kutt
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        livenessProbe:
+          httpGet:
+            path: /api/v2/health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/v2/health
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: kutt-data
+        persistentVolumeClaim:
+          claimName: kutt-data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kutt
+  namespace: kutt
+spec:
+  selector:
+    app: kutt
+  ports:
+  - port: 80
+    targetPort: 3000
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kutt-ingress
+  namespace: kutt
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-production"
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+spec:
+  ingressClassName: traefik
+  tls:
+  - hosts:
+    - go.starnix.net
+    secretName: kutt-tls
+  rules:
+  - host: go.starnix.net
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: kutt
+            port:
+              number: 80

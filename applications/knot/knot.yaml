@@ -17,13 +17,20 @@ data:
         listen: 0.0.0.0@53
         rundir: /rundir
 
+    control:
+        listen: /rundir/knot.sock
+
     log:
       - target: stderr
         any: info
 
+    template:
+      - id: default
+        storage: /storage/zones
+
     zone:
       - domain: starnix.net
-        file: /storage/zones/starnix.net.zone
+        file: starnix.net.zone
         zonefile-load: whole
 ---
 apiVersion: apps/v1
@@ -60,6 +67,18 @@ spec:
         emptyDir: {}
       - name: rundir
         emptyDir: {}
+      initContainers:
+      - name: git-sync-init
+        image: registry.k8s.io/git-sync/git-sync:v4.4.0
+        args:
+        - --repo=https://github.com/usenix17/dns.git
+        - --branch=main
+        - --root=/tmp/git
+        - --dest=zones
+        - --one-time
+        volumeMounts:
+        - name: zone-data
+          mountPath: /tmp/git
       containers:
       - name: knot
         image: cznic/knot:3.4

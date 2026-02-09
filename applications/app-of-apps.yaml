@@ -221,6 +221,28 @@ spec:
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
+  name: knot
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/usenix17/ArgoCD.git
+    targetRevision: HEAD
+    path: applications/knot
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: knot
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
   name: librespeed
   namespace: argocd
 spec:

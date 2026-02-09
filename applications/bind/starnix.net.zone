@@ -104,6 +104,7 @@ wazuh                   IN  A     192.168.1.86
 ; CNAME records
 apprise                 IN  CNAME ingress
 argocd                  IN  CNAME ingress
+auth                    IN  CNAME jellyfin
 borgwarehouse           IN  CNAME ingress
 fleet                   IN  CNAME ingress
 freescout               IN  CNAME ingress

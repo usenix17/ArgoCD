@@ -8,7 +8,8 @@ metadata:
 # Note: Create secrets separately before applying this manifest:
 # kubectl create secret generic kutt-secrets -n kutt \
 #   --from-literal=postgres-password="$(openssl rand -base64 24)" \
-#   --from-literal=jwt-secret="$(openssl rand -base64 32)"
+#   --from-literal=jwt-secret="$(openssl rand -base64 32)" \
+#   --from-literal=oidc-client-secret="<from authentik>"
 
 ---
 apiVersion: v1
@@ -195,6 +196,21 @@ spec:
           value: "true"
         - name: MAIL_ENABLED
           value: "false"
+        - name: OIDC_ENABLED
+          value: "true"
+        - name: OIDC_ISSUER
+          value: "https://auth.starnix.net/application/o/kutt/"
+        - name: OIDC_CLIENT_ID
+          value: "7lJd7UF2oqUb9B82vCXUUTc0zLuEtZ6CrkzaulC7"
+        - name: OIDC_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: kutt-secrets
+              key: oidc-client-secret
+        - name: OIDC_SCOPE
+          value: "openid email profile"
+        - name: OIDC_EMAIL_CLAIM
+          value: "email"
         volumeMounts:
         - name: kutt-data
           mountPath: /var/lib/kutt

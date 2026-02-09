@@ -79,7 +79,7 @@ spec:
             memory: 128Mi
         volumeMounts:
         - name: knot-config
-          mountPath: /etc/knot/knot.conf
+          mountPath: /config/knot.conf
           subPath: knot.conf
         - name: zone-data
           mountPath: /storage

@@ -147,17 +147,21 @@ spec:
         - name: zone-data
           mountPath: /tmp/git
       - name: reloader
-        image: cznic/knot:3.4
+        image: alpine:latest
         command:
         - /bin/sh
         - -c
         - |
+          apk add --no-cache curl knot-utils > /dev/null 2>&1
           LAST=""
           while true; do
             CURRENT=$(readlink /storage/zones 2>/dev/null)
             if [ "$CURRENT" != "$LAST" ] && [ -n "$CURRENT" ]; then
               echo "Zone update detected, reloading..."
               knotc -s /rundir/knot.sock zone-reload starnix.net 2>&1 || true
+              curl -s -X POST http://apprise.apprise.svc:8000/notify/argocd \
+                -H "Content-Type: application/json" \
+                -d '{"title": "knot-dns", "body": "🔄 **starnix.net** zone reloaded from git."}' || true
               LAST="$CURRENT"
             fi
             sleep 5
@@ -168,7 +172,7 @@ spec:
             memory: 16Mi
           limits:
             cpu: 50m
-            memory: 32Mi
+            memory: 64Mi
         volumeMounts:
         - name: zone-data
           mountPath: /storage

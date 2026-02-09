@@ -193,7 +193,7 @@ spec:
         - name: DISALLOW_REGISTRATION
           value: "true"
         - name: DISALLOW_ANONYMOUS_LINKS
-          value: "true"
+          value: "false"
         - name: MAIL_ENABLED
           value: "false"
         - name: OIDC_ENABLED

@@ -1,0 +1,189 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authentik-ldap
+  namespace: authentik
+  labels:
+    app: authentik-ldap
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: authentik-ldap
+  template:
+    metadata:
+      labels:
+        app: authentik-ldap
+    spec:
+      tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "node-role.kubernetes.io/master"
+        operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: ldap
+        image: ghcr.io/goauthentik/ldap:2024.8.3
+        ports:
+        - containerPort: 389
+          name: ldap
+          protocol: TCP
+        - containerPort: 636
+          name: ldaps
+          protocol: TCP
+        env:
+        - name: AUTHENTIK_HOST
+          value: "http://authentik-server.authentik.svc:9000"
+        - name: AUTHENTIK_INSECURE
+          value: "true"
+        - name: AUTHENTIK_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: authentik-ldap-token
+              key: token
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        readinessProbe:
+          tcpSocket:
+            port: 389
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          tcpSocket:
+            port: 389
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authentik-ldap
+  namespace: authentik
+  labels:
+    app: authentik-ldap
+spec:
+  type: LoadBalancer
+  loadBalancerIP: 192.168.7.212
+  selector:
+    app: authentik-ldap
+  ports:
+  - name: ldap
+    port: 389
+    targetPort: 389
+    protocol: TCP
+  - name: ldaps
+    port: 636
+    targetPort: 636
+    protocol: TCP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authentik-radius
+  namespace: authentik
+  labels:
+    app: authentik-radius
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: authentik-radius
+  template:
+    metadata:
+      labels:
+        app: authentik-radius
+    spec:
+      tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "node-role.kubernetes.io/master"
+        operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: radius
+        image: ghcr.io/goauthentik/radius:2024.8.3
+        ports:
+        - containerPort: 1812
+          name: radius-auth
+          protocol: UDP
+        - containerPort: 1813
+          name: radius-acct
+          protocol: UDP
+        env:
+        - name: AUTHENTIK_HOST
+          value: "http://authentik-server.authentik.svc:9000"
+        - name: AUTHENTIK_INSECURE
+          value: "true"
+        - name: AUTHENTIK_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: authentik-radius-token
+              key: token
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        readinessProbe:
+          tcpSocket:
+            port: 1812
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          tcpSocket:
+            port: 1812
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authentik-radius
+  namespace: authentik
+  labels:
+    app: authentik-radius
+spec:
+  type: LoadBalancer
+  loadBalancerIP: 192.168.7.213
+  selector:
+    app: authentik-radius
+  ports:
+  - name: radius-auth
+    port: 1812
+    targetPort: 1812
+    protocol: UDP
+  - name: radius-acct
+    port: 1813
+    targetPort: 1813
+    protocol: UDP

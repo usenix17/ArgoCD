@@ -65,8 +65,6 @@ spec:
           value: "1000"
         - name: TZ
           value: "America/Chicago"
-        - name: OVERSEERR_RESET_ADMIN
-          value: "true"
         resources:
           requests:
             cpu: 200m

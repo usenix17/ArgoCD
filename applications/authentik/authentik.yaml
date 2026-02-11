@@ -1,0 +1,423 @@
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: authentik
+  labels:
+    name: authentik
+
+---
+# Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: authentik-config
+  namespace: authentik
+data:
+  AUTHENTIK_ERROR_REPORTING__ENABLED: "true"
+  AUTHENTIK_EMAIL__HOST: "smtp.gmail.com"
+  AUTHENTIK_EMAIL__PORT: "586"
+  AUTHENTIK_EMAIL__USERNAME: "info@starnix.net"
+  AUTHENTIK_EMAIL__USE_TLS: "true"
+  AUTHENTIK_EMAIL__USE_SSL: "false"
+  AUTHENTIK_EMAIL__TIMEOUT: "10"
+  AUTHENTIK_EMAIL__FROM: "info@starnix.net"
+  AUTHENTIK_REDIS__HOST: "redis"
+  AUTHENTIK_POSTGRESQL__HOST: "postgresql"
+  AUTHENTIK_POSTGRESQL__USER: "authentik"
+  AUTHENTIK_POSTGRESQL__NAME: "authentik"
+  POSTGRES_USER: "authentik"
+  POSTGRES_DB: "authentik"
+  AUTHENTIK_WEB__TRUSTED_ORIGINS: "https://auth.starnix.net"
+  AUTHENTIK_WEB__ALLOWED_HOSTS: "auth.starnix.net"
+  AUTHENTIK_WEB__CSRF_TRUSTED_ORIGINS: "https://auth.starnix.net"
+
+# Secrets managed externally (not in git):
+# kubectl create secret generic authentik-secrets -n authentik \
+#   --from-literal=PG_PASS="..." \
+#   --from-literal=POSTGRES_PASSWORD="..." \
+#   --from-literal=AUTHENTIK_POSTGRESQL__PASSWORD="..." \
+#   --from-literal=AUTHENTIK_SECRET_KEY="..." \
+#   --from-literal=AUTHENTIK_EMAIL__PASSWORD="..."
+
+---
+# Persistent Volumes (NFS)
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgresql-data-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  nfs:
+    server: 192.168.1.75
+    path: /mnt/Store/authentik/database/_data
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: redis-data-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  nfs:
+    server: 192.168.1.75
+    path: /mnt/Store/authentik/redis/_data
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: authentik-media-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  nfs:
+    server: 192.168.1.75
+    path: /mnt/Store/authentik/media
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: authentik-templates-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  nfs:
+    server: 192.168.1.75
+    path: /mnt/Store/authentik/custom-templates
+
+---
+# Persistent Volume Claims
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgresql-data
+  namespace: authentik
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: manual
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data
+  namespace: authentik
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: manual
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: authentik-media
+  namespace: authentik
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: manual
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: authentik-templates
+  namespace: authentik
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: manual
+
+---
+# PostgreSQL
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgresql
+  namespace: authentik
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: postgresql
+  template:
+    metadata:
+      labels:
+        app: postgresql
+    spec:
+      tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "node-role.kubernetes.io/master"
+        operator: "Exists"
+        effect: "NoSchedule"
+      securityContext:
+        fsGroup: 70
+      containers:
+      - name: postgresql
+        image: docker.io/library/postgres:12-alpine
+        envFrom:
+        - configMapRef:
+            name: authentik-config
+        - secretRef:
+            name: authentik-secrets
+        ports:
+        - containerPort: 5432
+        volumeMounts:
+        - name: postgresql-data
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: postgresql-data
+        persistentVolumeClaim:
+          claimName: postgresql-data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgresql
+  namespace: authentik
+spec:
+  selector:
+    app: postgresql
+  ports:
+  - port: 5432
+    targetPort: 5432
+
+---
+# Redis
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: authentik
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "node-role.kubernetes.io/master"
+        operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: redis
+        image: docker.io/library/redis:alpine
+        command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+        ports:
+        - containerPort: 6379
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+      volumes:
+      - name: redis-data
+        persistentVolumeClaim:
+          claimName: redis-data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: authentik
+spec:
+  selector:
+    app: redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+
+---
+# Authentik Server
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authentik-server
+  namespace: authentik
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authentik-server
+  template:
+    metadata:
+      labels:
+        app: authentik-server
+    spec:
+      tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "node-role.kubernetes.io/master"
+        operator: "Exists"
+        effect: "NoSchedule"
+      initContainers:
+      - name: wait-for-db
+        image: postgres:12-alpine
+        command: ["/bin/sh", "-c", "until pg_isready -h postgresql -U authentik; do echo waiting for db; sleep 2; done"]
+      containers:
+      - name: authentik-server
+        image: ghcr.io/goauthentik/server:2024.8.3
+        args: ["server"]
+        envFrom:
+        - configMapRef:
+            name: authentik-config
+        - secretRef:
+            name: authentik-secrets
+        ports:
+        - containerPort: 9000
+        - containerPort: 9443
+        volumeMounts:
+        - name: authentik-media
+          mountPath: /media
+        - name: authentik-templates
+          mountPath: /templates
+      volumes:
+      - name: authentik-media
+        persistentVolumeClaim:
+          claimName: authentik-media
+      - name: authentik-templates
+        persistentVolumeClaim:
+          claimName: authentik-templates
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authentik-server
+  namespace: authentik
+spec:
+  selector:
+    app: authentik-server
+  ports:
+  - name: http
+    port: 9000
+    targetPort: 9000
+  - name: https
+    port: 9443
+    targetPort: 9443
+
+---
+# Authentik Worker
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authentik-worker
+  namespace: authentik
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authentik-worker
+  template:
+    metadata:
+      labels:
+        app: authentik-worker
+    spec:
+      tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "node-role.kubernetes.io/master"
+        operator: "Exists"
+        effect: "NoSchedule"
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+      containers:
+      - name: authentik-worker
+        image: ghcr.io/goauthentik/server:2024.8.3
+        args: ["worker"]
+        envFrom:
+        - configMapRef:
+            name: authentik-config
+        - secretRef:
+            name: authentik-secrets
+        volumeMounts:
+        - name: authentik-media
+          mountPath: /media
+        - name: authentik-templates
+          mountPath: /templates
+      volumes:
+      - name: authentik-media
+        persistentVolumeClaim:
+          claimName: authentik-media
+      - name: authentik-templates
+        persistentVolumeClaim:
+          claimName: authentik-templates
+
+---
+# Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: authentik-ingress
+  namespace: authentik
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-cloudflare"
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+spec:
+  ingressClassName: traefik
+  tls:
+  - hosts:
+    - auth.starnix.net
+    secretName: authentik-tls-cert
+  rules:
+  - host: auth.starnix.net
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: authentik-server
+            port:
+              number: 9000

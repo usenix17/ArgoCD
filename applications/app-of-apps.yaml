@@ -23,14 +23,14 @@ spec:
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: authentik-outposts
+  name: authentik
   namespace: argocd
 spec:
   project: default
   source:
     repoURL: https://github.com/usenix17/ArgoCD.git
     targetRevision: HEAD
-    path: applications/authentik-outposts
+    path: applications/authentik
   destination:
     server: https://kubernetes.default.svc
     namespace: authentik

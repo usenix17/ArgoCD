@@ -32,10 +32,10 @@ spec:
       - name: ldap
         image: ghcr.io/goauthentik/ldap:2024.8.3
         ports:
-        - containerPort: 389
+        - containerPort: 3389
           name: ldap
           protocol: TCP
-        - containerPort: 636
+        - containerPort: 6636
           name: ldaps
           protocol: TCP
         env:
@@ -57,14 +57,14 @@ spec:
             memory: 256Mi
         readinessProbe:
           tcpSocket:
-            port: 389
+            port: 3389
           initialDelaySeconds: 10
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
         livenessProbe:
           tcpSocket:
-            port: 389
+            port: 3389
           initialDelaySeconds: 30
           periodSeconds: 30
           timeoutSeconds: 5
@@ -86,11 +86,11 @@ spec:
   ports:
   - name: ldap
     port: 389
-    targetPort: 389
+    targetPort: 3389
     protocol: TCP
   - name: ldaps
     port: 636
-    targetPort: 636
+    targetPort: 6636
     protocol: TCP
 
 ---
@@ -133,6 +133,9 @@ spec:
         - containerPort: 1813
           name: radius-acct
           protocol: UDP
+        - containerPort: 9300
+          name: metrics
+          protocol: TCP
         env:
         - name: AUTHENTIK_HOST
           value: "http://authentik-server.authentik.svc:9000"
@@ -152,14 +155,14 @@ spec:
             memory: 256Mi
         readinessProbe:
           tcpSocket:
-            port: 1812
+            port: 9300
           initialDelaySeconds: 10
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
         livenessProbe:
           tcpSocket:
-            port: 1812
+            port: 9300
           initialDelaySeconds: 30
           periodSeconds: 30
           timeoutSeconds: 5

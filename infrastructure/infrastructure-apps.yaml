@@ -338,6 +338,19 @@ spec:
                 url: https://github.com/usenix17/ArgoCD.git
 
         configs:
+          cm:
+            url: https://argocd.starnix.net
+            oidc.config: |
+              name: Starnix
+              issuer: https://auth.starnix.net/application/o/argocd/
+              clientID: hMxnyA6KclvS6xyI7OUj1MewppIXYFAI8EV84xNY
+              clientSecret: $oidc.authentik.clientSecret
+              requestedScopes:
+                - openid
+                - profile
+                - email
+          rbac:
+            policy.default: role:admin
           params:
             server.insecure: true  # TLS termination handled by Traefik
 

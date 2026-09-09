@@ -81,6 +81,35 @@ spec:
       storage: 10Gi
   storageClassName: manual
 ---
+# Longhorn-backed replacements (migrated off NFS 2026-09-08: Postgres + the
+# server workdir do not belong on NFS -- stale handles / locking). Dynamically
+# provisioned; the old NFS PVs above stay (Retain) as rollback until verified.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: semaphore-postgres-lh
+  namespace: semaphore
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: longhorn
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: semaphore-workdir-lh
+  namespace: semaphore
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: longhorn
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -141,7 +170,7 @@ spec:
       volumes:
       - name: data
         persistentVolumeClaim:
-          claimName: semaphore-postgres
+          claimName: semaphore-postgres-lh
 ---
 apiVersion: v1
 kind: Service

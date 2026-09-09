@@ -12,6 +12,10 @@ spec:
     helm:
       releaseName: semaphore
       values: |
+        # replicaCount 0 during the NFS->Longhorn cutover so no writes hit the
+        # DB while it is dump/restored onto the new Longhorn PVC. Set back to 1
+        # once the data is loaded.
+        replicaCount: 0
         ingress:
           enabled: true
           className: traefik
@@ -30,7 +34,7 @@ spec:
 
         persistence:
           enabled: true
-          existingClaim: semaphore-workdir
+          existingClaim: semaphore-workdir-lh
 
         database:
           type: postgres

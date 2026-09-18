@@ -702,9 +702,13 @@ data:
           authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
           invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
           signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+          # v6 inserts a provider UUID into the callback path (the documented bare
+          # /api/oidc/callback is v5-only), so match by regex to survive UUID
+          # changes across reinstalls. PULSE_PUBLIC_URL on the deployment makes
+          # Pulse emit https:// here (it sits behind TLS-terminating Traefik).
           redirect_uris:
-            - matching_mode: strict
-              url: https://pulse.starnix.net/api/oidc/callback
+            - matching_mode: regex
+              url: ^https://pulse\.starnix\.net/api/oidc/[0-9a-f-]+/callback$
       - model: authentik_core.application
         identifiers:
           slug: pulse

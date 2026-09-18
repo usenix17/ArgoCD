@@ -77,6 +77,13 @@ spec:
                 secretKeyRef:
                   name: pulse-secrets
                   key: OIDC_CLIENT_SECRET
+            # Behind TLS-terminating Traefik: without this Pulse builds its OIDC
+            # redirect_uri as http:// (Authentik then 400s on redirect_uri).
+            - name: PULSE_PUBLIC_URL
+              value: "https://pulse.starnix.net"
+            # Trust X-Forwarded-* only from the pod network (Traefik).
+            - name: PULSE_TRUSTED_PROXY_CIDRS
+              value: "10.244.0.0/16"
           volumeMounts:
             - { name: data, mountPath: /data }
           readinessProbe:

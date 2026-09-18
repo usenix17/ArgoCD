@@ -83,6 +83,11 @@ metadata:
   namespace: ghost
 spec:
   replicas: 1
+  # RWO Longhorn PVC: RollingUpdate deadlocks on Multi-Attach (new pod can't
+  # mount while the old holds the volume -- bit ghost-mysql 2026-09-18, same as
+  # the Harbor incident). Recreate stops the old pod first.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: ghost-mysql

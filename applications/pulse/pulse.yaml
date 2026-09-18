@@ -77,6 +77,10 @@ spec:
                 secretKeyRef:
                   name: pulse-secrets
                   key: OIDC_CLIENT_SECRET
+            # Explicit username claim (matches Pulse's default; pinned so the UI
+            # never falls back to the sub UUID again).
+            - name: OIDC_USERNAME_CLAIM
+              value: "preferred_username"
             # Behind TLS-terminating Traefik: without this Pulse builds its OIDC
             # redirect_uri as http:// (Authentik then 400s on redirect_uri).
             - name: PULSE_PUBLIC_URL

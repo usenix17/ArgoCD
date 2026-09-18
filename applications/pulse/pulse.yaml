@@ -95,8 +95,10 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
           resources:
-            requests: { cpu: 50m, memory: 128Mi }
-            limits: { cpu: 500m, memory: 512Mi }
+            # 512Mi OOMKilled once real load arrived (5-node PVE + host agents +
+            # 5 k8s agents flushing buffers into the SQLite metrics store).
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "1", memory: 1Gi }
       volumes:
         - name: data
           persistentVolumeClaim:

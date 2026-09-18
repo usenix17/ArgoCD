@@ -677,3 +677,38 @@ data:
           users:
             - !Find [authentik_core.user, [username, svc_nsscache]]
             - !Find [authentik_core.user, [username, svc_jellyfin]]
+  pulse-proxy.yaml: |
+    # Authentik blueprint: forward-auth for Pulse (pulse.starnix.net).
+    # Pulse's own SSO is a paid-tier feature, so Traefik ForwardAuth (middleware in
+    # applications/pulse/pulse.yaml) asks the EMBEDDED outpost for an auth decision
+    # on every request. This creates the proxy provider + application and assigns
+    # the provider to the embedded outpost.
+    # CAVEAT: the outpost entry REPLACES the embedded outpost's provider list --
+    # today it has none (LDAP/RADIUS run dedicated outposts); if another proxy
+    # provider is ever added, list BOTH here.
+    version: 1
+    metadata:
+      name: pulse-forward-auth
+    entries:
+      - model: authentik_providers_proxy.proxyprovider
+        id: pulse-provider
+        identifiers:
+          name: pulse-proxy
+        attrs:
+          mode: forward_single
+          external_host: https://pulse.starnix.net
+          authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+          invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      - model: authentik_core.application
+        identifiers:
+          slug: pulse
+        attrs:
+          name: Pulse
+          provider: !KeyOf pulse-provider
+          meta_launch_url: https://pulse.starnix.net
+      - model: authentik_outposts.outpost
+        identifiers:
+          managed: goauthentik.io/outposts/embedded
+        attrs:
+          providers:
+            - !KeyOf pulse-provider

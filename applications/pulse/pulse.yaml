@@ -1,0 +1,161 @@
+---
+# Pulse server: unified monitoring dashboard (Proxmox + k8s + Docker).
+# Web UI + agent endpoint on :7655. State/config on Longhorn (NOT NFS).
+# Proxmox nodes are added post-deploy in the web UI with a read-only API token.
+# pulse-secrets (OpenBao secret/cluster/pulse-secrets) holds API_TOKENS -- the
+# shared token agents present as PULSE_TOKEN. Seed it before first sync:
+#   vault kv put secret/cluster/pulse-secrets API_TOKENS="<generate a long token>"
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pulse-secrets
+  namespace: pulse
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao
+    kind: ClusterSecretStore
+  target:
+    name: pulse-secrets
+    creationPolicy: Owner
+  dataFrom:
+    - extract:
+        key: cluster/pulse-secrets
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pulse-data
+  namespace: pulse
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: longhorn
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pulse
+  namespace: pulse
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate            # RWO Longhorn PVC -- avoid Multi-Attach on upgrade
+  selector:
+    matchLabels:
+      app: pulse
+  template:
+    metadata:
+      labels:
+        app: pulse
+    spec:
+      securityContext:
+        fsGroup: 1000          # let the server write /data
+      containers:
+        - name: pulse
+          image: rcourtman/pulse:v6.4.1
+          ports:
+            - { name: http, containerPort: 7655 }
+          env:
+            - name: API_TOKENS
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-secrets
+                  key: API_TOKENS
+          volumeMounts:
+            - { name: data, mountPath: /data }
+          readinessProbe:
+            httpGet: { path: /, port: 7655 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: pulse-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pulse
+  namespace: pulse
+  labels:
+    app: pulse
+spec:
+  selector:
+    app: pulse
+  ports:
+    - { name: http, port: 7655, targetPort: 7655 }
+---
+# Authentik forward-auth (embedded outpost). The Middleware sends every request
+# to authentik for an auth decision; unauthenticated users get redirected to
+# auth.starnix.net. The proxy provider + application + outpost assignment are
+# codified in applications/authentik/authentik-blueprints.yaml (pulse-proxy.yaml).
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: pulse-authentik
+  namespace: pulse
+spec:
+  forwardAuth:
+    address: http://authentik-server.authentik.svc.cluster.local:9000/outpost.goauthentik.io/auth/traefik
+    trustForwardHeader: true
+    authResponseHeaders:
+      - X-authentik-username
+      - X-authentik-groups
+      - X-authentik-email
+      - X-authentik-name
+      - X-authentik-uid
+---
+# Ingress backends must be same-namespace; this ExternalName lets the
+# /outpost.goauthentik.io path (authentik's auth callback on this host) route to
+# the embedded outpost in the authentik namespace.
+apiVersion: v1
+kind: Service
+metadata:
+  name: authentik-embedded
+  namespace: pulse
+spec:
+  type: ExternalName
+  externalName: authentik-server.authentik.svc.cluster.local
+  ports:
+    - { name: http, port: 9000 }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pulse
+  namespace: pulse
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-production"
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.middlewares: pulse-pulse-authentik@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: pulse.starnix.net
+      http:
+        paths:
+          - path: /outpost.goauthentik.io
+            pathType: Prefix
+            backend:
+              service:
+                name: authentik-embedded
+                port:
+                  number: 9000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: pulse
+                port:
+                  number: 7655
+  tls:
+    - secretName: pulse-tls
+      hosts:
+        - pulse.starnix.net

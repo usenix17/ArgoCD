@@ -1,0 +1,104 @@
+---
+# Pulse agent -- one per Talos node, reports k8s resources to the server.
+# Default: KUBERNETES-ONLY (non-privileged). Node host CPU/mem/disk already come
+# from kube-prometheus-stack; flip the commented host-metrics block on only if you
+# want Pulse to duplicate that (requires privileged + host mounts).
+# NOTE: verify the container command/entrypoint against the chart --
+#   helm template pulse/pulse --set agent.enabled=true ...  (the docs recommend
+#   `helm template` for GitOps/immutable Talos). Adjust `command` below if needed.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pulse-agent
+  namespace: pulse
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pulse-agent
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "pods", "services", "events",
+                "persistentvolumeclaims", "persistentvolumes", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pulse-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pulse-agent
+subjects:
+  - kind: ServiceAccount
+    name: pulse-agent
+    namespace: pulse
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: pulse-agent
+  namespace: pulse
+spec:
+  selector:
+    matchLabels:
+      app: pulse-agent
+  template:
+    metadata:
+      labels:
+        app: pulse-agent
+    spec:
+      serviceAccountName: pulse-agent
+      tolerations:
+        - operator: Exists          # all nodes are control-plane in this cluster
+      containers:
+        - name: pulse-agent
+          image: rcourtman/pulse:v6.4.1
+          command: ["/usr/local/bin/pulse-agent"]   # verify vs `helm template`
+          env:
+            - { name: PULSE_URL, value: "http://pulse.pulse.svc.cluster.local:7655" }
+            - name: PULSE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-secrets
+                  key: API_TOKENS
+            - { name: PULSE_AGENT_ID, value: "starnix-talos" }
+            - { name: PULSE_ENABLE_KUBERNETES, value: "true" }
+            - { name: PULSE_ENABLE_HOST, value: "false" }
+            - name: PULSE_REPORT_IP           # Talos: report the node IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 512Mi }
+          # --- host metrics opt-in (privileged) -- uncomment to enable ---
+          # env additions: PULSE_ENABLE_HOST=true, HOST_PROC=/host/proc,
+          #   HOST_SYS=/host/sys, HOST_ETC=/host/etc
+          # securityContext: { privileged: true }
+          # volumeMounts:
+          #   - { name: proc, mountPath: /host/proc, readOnly: true }
+          #   - { name: sys,  mountPath: /host/sys,  readOnly: true }
+          #   - { name: root, mountPath: /host/root, readOnly: true }
+      # volumes:                     # (host-metrics opt-in)
+      #   - { name: proc, hostPath: { path: /proc } }
+      #   - { name: sys,  hostPath: { path: /sys } }
+      #   - { name: root, hostPath: { path: / } }

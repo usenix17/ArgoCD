@@ -220,14 +220,6 @@ data:
           - "[STATUS] == 200"
         alerts:
           - type: discord
-      - name: "Interstellar Proxy"
-        group: Services
-        url: "https://proxy.starnix.net"
-        interval: 5m
-        conditions:
-          - "[STATUS] == 200"
-        alerts:
-          - type: discord
       - name: "Radiacode Analyzer"
         group: Services
         url: "https://radiacode.starnix.net"
@@ -319,16 +311,6 @@ data:
         group: Infrastructure
         url: "tcp://192.168.1.26:389"
         interval: 5m
-        client:
-          timeout: 5s
-        conditions:
-          - "[CONNECTED] == true"
-        alerts:
-          - type: discord
-      - name: "FreeIPA DNS"
-        group: Infrastructure
-        url: "tcp://192.168.1.26:53"
-        interval: 1m
         client:
           timeout: 5s
         conditions:

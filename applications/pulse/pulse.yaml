@@ -65,6 +65,18 @@ spec:
                 secretKeyRef:
                   name: pulse-secrets
                   key: API_TOKENS
+            # Native OIDC against Authentik (Community SSO; env vars lock the
+            # SSO fields in the UI = GitOps-owned). Secret lives in OpenBao
+            # cluster/pulse-secrets; provider is blueprint-managed (pulse-oidc).
+            - name: OIDC_ISSUER_URL
+              value: "https://auth.starnix.net/application/o/pulse/"
+            - name: OIDC_CLIENT_ID
+              value: "pulse"
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-secrets
+                  key: OIDC_CLIENT_SECRET
           volumeMounts:
             - { name: data, mountPath: /data }
           readinessProbe:
@@ -92,48 +104,9 @@ spec:
   ports:
     - { name: http, port: 7655, targetPort: 7655 }
 ---
-# Authentik forward-auth (embedded outpost). The Middleware sends every request
-# to authentik for an auth decision; unauthenticated users get redirected to
-# auth.starnix.net. The proxy provider + application + outpost assignment are
-# codified in applications/authentik/authentik-blueprints.yaml (pulse-proxy.yaml).
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
-metadata:
-  name: pulse-authentik
-  namespace: pulse
-spec:
-  forwardAuth:
-    address: http://authentik-server.authentik.svc.cluster.local:9000/outpost.goauthentik.io/auth/traefik
-    trustForwardHeader: true
-    authResponseHeaders:
-      - X-authentik-username
-      - X-authentik-groups
-      - X-authentik-email
-      - X-authentik-name
-      - X-authentik-uid
----
-# /outpost.goauthentik.io on this host (authentik's auth start/callback) must
-# reach the embedded outpost in the authentik namespace. The kubernetesingress
-# provider rejects ExternalName backends, but the CRD provider runs with
-# allowCrossNamespace=true -- so this path is an IngressRoute. Traefik prefers
-# the longer rule, so it wins over the Ingress catch-all '/'. No middleware here:
-# these paths ARE the auth flow.
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
-metadata:
-  name: pulse-outpost
-  namespace: pulse
-spec:
-  entryPoints:
-    - websecure
-  routes:
-    - match: Host(`pulse.starnix.net`) && PathPrefix(`/outpost.goauthentik.io`)
-      kind: Rule
-      services:
-        - name: authentik-server
-          namespace: authentik
-          port: 9000
----
+# Auth is native OIDC in Pulse itself (see OIDC_* env on the Deployment) -- no
+# Traefik forward-auth layer, so agent endpoints (/install.sh, /api/*) work
+# without SSO exclusions and are guarded by Pulse's own API tokens.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -142,7 +115,6 @@ metadata:
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-production"
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    traefik.ingress.kubernetes.io/router.middlewares: pulse-pulse-authentik@kubernetescrd
 spec:
   ingressClassName: traefik
   rules:

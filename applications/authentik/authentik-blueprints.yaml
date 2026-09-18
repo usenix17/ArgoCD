@@ -677,46 +677,38 @@ data:
           users:
             - !Find [authentik_core.user, [username, svc_nsscache]]
             - !Find [authentik_core.user, [username, svc_jellyfin]]
-  pulse-proxy.yaml: |
-    # Authentik blueprint: forward-auth for Pulse (pulse.starnix.net).
-    # Pulse's own SSO is a paid-tier feature, so Traefik ForwardAuth (middleware in
-    # applications/pulse/pulse.yaml) asks the EMBEDDED outpost for an auth decision
-    # on every request. This creates the proxy provider + application and assigns
-    # the provider to the embedded outpost.
-    # CAVEAT: the outpost entry REPLACES the embedded outpost's provider list --
-    # today it has none (LDAP/RADIUS run dedicated outposts); if another proxy
-    # provider is ever added, list BOTH here.
+  pulse-oidc.yaml: |
+    # Authentik blueprint: native OIDC for Pulse (pulse.starnix.net).
+    # Pulse Community SSO is free (plain OIDC + allowed-groups + role mapping), so
+    # this replaced the earlier forward-auth/proxy-provider approach -- no Traefik
+    # middleware, and agent endpoints (/install.sh, /api/*) are naturally
+    # unauthenticated at the proxy layer while Pulse guards them with API tokens.
+    # client_secret is NOT set here: authentik autogenerates it on create and it
+    # is copied ONCE into OpenBao cluster/pulse-secrets (never in git). Pulse
+    # consumes it via env (OIDC_CLIENT_SECRET <- ESO). Pulse needs RS256, hence
+    # the explicit signing_key. Issuer: https://auth.starnix.net/application/o/pulse/
+    # Callback: https://pulse.starnix.net/api/oidc/callback (legacy env-var mode).
     version: 1
     metadata:
-      name: pulse-forward-auth
+      name: pulse-oidc
     entries:
-      - model: authentik_providers_proxy.proxyprovider
-        id: pulse-provider
+      - model: authentik_providers_oauth2.oauth2provider
+        id: pulse-oidc-provider
         identifiers:
-          name: pulse-proxy
+          name: pulse-oidc
         attrs:
-          mode: forward_single
-          external_host: https://pulse.starnix.net
+          client_type: confidential
+          client_id: pulse
           authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
           invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
-          # Agent/install endpoints must bypass SSO: agents + the PVE/host setup
-          # script curl these with no browser session (they got the Authentik
-          # login HTML -> "syntax error near '<!DOCTYPE html>'"). Pulse enforces
-          # its own API-token auth on these; the UI stays behind Authentik.
-          skip_path_regex: |
-            ^/install\.sh
-            ^/api/.*
-            ^/download/.*
+          signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+          redirect_uris:
+            - matching_mode: strict
+              url: https://pulse.starnix.net/api/oidc/callback
       - model: authentik_core.application
         identifiers:
           slug: pulse
         attrs:
           name: Pulse
-          provider: !KeyOf pulse-provider
+          provider: !KeyOf pulse-oidc-provider
           meta_launch_url: https://pulse.starnix.net
-      - model: authentik_outposts.outpost
-        identifiers:
-          managed: goauthentik.io/outposts/embedded
-        attrs:
-          providers:
-            - !KeyOf pulse-provider

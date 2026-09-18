@@ -30,7 +30,7 @@ spec:
         effect: "NoSchedule"
       containers:
       - name: ldap
-        image: ghcr.io/goauthentik/ldap:2026.8.0
+        image: ghcr.io/goauthentik/ldap:2026.8.3
         ports:
         - containerPort: 3389
           name: ldap
@@ -123,7 +123,7 @@ spec:
         effect: "NoSchedule"
       containers:
       - name: radius
-        image: ghcr.io/goauthentik/radius:2026.8.0
+        image: ghcr.io/goauthentik/radius:2026.8.3
         ports:
         - containerPort: 1812
           name: radius-auth

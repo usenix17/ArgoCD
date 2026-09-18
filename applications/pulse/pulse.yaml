@@ -112,19 +112,27 @@ spec:
       - X-authentik-name
       - X-authentik-uid
 ---
-# Ingress backends must be same-namespace; this ExternalName lets the
-# /outpost.goauthentik.io path (authentik's auth callback on this host) route to
-# the embedded outpost in the authentik namespace.
-apiVersion: v1
-kind: Service
+# /outpost.goauthentik.io on this host (authentik's auth start/callback) must
+# reach the embedded outpost in the authentik namespace. The kubernetesingress
+# provider rejects ExternalName backends, but the CRD provider runs with
+# allowCrossNamespace=true -- so this path is an IngressRoute. Traefik prefers
+# the longer rule, so it wins over the Ingress catch-all '/'. No middleware here:
+# these paths ARE the auth flow.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
 metadata:
-  name: authentik-embedded
+  name: pulse-outpost
   namespace: pulse
 spec:
-  type: ExternalName
-  externalName: authentik-server.authentik.svc.cluster.local
-  ports:
-    - { name: http, port: 9000 }
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`pulse.starnix.net`) && PathPrefix(`/outpost.goauthentik.io`)
+      kind: Rule
+      services:
+        - name: authentik-server
+          namespace: authentik
+          port: 9000
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -141,13 +149,6 @@ spec:
     - host: pulse.starnix.net
       http:
         paths:
-          - path: /outpost.goauthentik.io
-            pathType: Prefix
-            backend:
-              service:
-                name: authentik-embedded
-                port:
-                  number: 9000
           - path: /
             pathType: Prefix
             backend:

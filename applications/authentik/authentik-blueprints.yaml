@@ -699,6 +699,14 @@ data:
           external_host: https://pulse.starnix.net
           authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
           invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+          # Agent/install endpoints must bypass SSO: agents + the PVE/host setup
+          # script curl these with no browser session (they got the Authentik
+          # login HTML -> "syntax error near '<!DOCTYPE html>'"). Pulse enforces
+          # its own API-token auth on these; the UI stays behind Authentik.
+          skip_path_regex: |
+            ^/install\.sh
+            ^/api/.*
+            ^/download/.*
       - model: authentik_core.application
         identifiers:
           slug: pulse

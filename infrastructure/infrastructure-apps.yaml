@@ -879,6 +879,10 @@ spec:
           size: 5Gi
           storageClass: "longhorn"
           accessMode: ReadWriteOnce
+        # Longhorn RWO PVC: RollingUpdate deadlocks on Multi-Attach
+        # (2026-09 audit); chart exposes 'strategy' at top level.
+        strategy:
+          type: Recreate
         securityContext:
           enabled: true
           fsGroup: 1000

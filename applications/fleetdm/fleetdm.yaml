@@ -127,6 +127,9 @@ metadata:
   namespace: fleetdm
 spec:
   replicas: 1
+  # Longhorn RWO PVC: RollingUpdate deadlocks on Multi-Attach (2026-09 audit).
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: redis

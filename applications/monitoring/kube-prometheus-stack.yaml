@@ -146,6 +146,10 @@ spec:
                       storage: 5Gi
 
         grafana:
+          # Longhorn RWO PVC: RollingUpdate deadlocks on Multi-Attach
+          # (2026-09 audit). Grafana subchart key is deploymentStrategy.
+          deploymentStrategy:
+            type: Recreate
           ingress:
             enabled: true
             ingressClassName: traefik

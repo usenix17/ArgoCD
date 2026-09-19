@@ -100,8 +100,11 @@ spec:
             capabilities:
               add: ["NET_RAW", "NET_ADMIN"]
           volumeMounts:
+            # ONLY the db dir: the image bakes its entrypoint scripts under
+            # /config (scripts/atlas_check.sh), so mounting a PVC over all of
+            # /config shadows them -> RunContainerError "no such file".
             - name: config
-              mountPath: /config
+              mountPath: /config/db
           readinessProbe:
             httpGet: { path: /, port: 8888 }
             initialDelaySeconds: 15

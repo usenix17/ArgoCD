@@ -406,6 +406,20 @@ data:
         <description>Falco (tuned-down, overlay FP): $(rule)</description>
         <group>falco_low,</group>
       </rule>
+      <!-- Whitelist the Atlas network scanner's own activity. Its hourly/4h
+           ARP+nmap sweeps trip Falco packet-socket/recon rules on the node the
+           pod runs on. Keyed on the process SIGNATURE (nmap writing to Atlas's
+           /config/logs/nmap_* greppable output), NOT source IP: the pod is
+           hostNetwork so its IP moves with rescheduling. Level 1 = below the
+           alert threshold, fully suppressed. A real attacker running bare nmap
+           does not match the Atlas output path and still alerts. -->
+      <rule id="100611" level="1">
+        <if_sid>100601</if_sid>
+        <field name="output_fields.proc.name" type="pcre2">^nmap$</field>
+        <field name="output_fields.proc.cmdline" type="pcre2">/config/logs/nmap_</field>
+        <description>Falco (suppressed, Atlas scanner): $(rule)</description>
+        <group>falco_low,atlas_whitelist,</group>
+      </rule>
     </group>
 
     <group name="privilege_escalation,">

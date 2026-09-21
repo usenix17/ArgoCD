@@ -698,6 +698,12 @@ data:
           name: pulse-oidc
         attrs:
           client_type: confidential
+          # authentik 2026.8's grant_types allowlist: the blueprint importer
+          # leaves it EMPTY on create (unlike the UI/serializer default), and an
+          # empty list rejects response_type=code as "otherwise malformed".
+          grant_types:
+            - authorization_code
+            - refresh_token
           client_id: pulse
           # sub = username (not the default opaque hashed UUID) -- Pulse fell back
           # to sub for display and showed UUIDs.
@@ -736,6 +742,12 @@ data:
           name: patchmon-oidc
         attrs:
           client_type: confidential
+          # authentik 2026.8's grant_types allowlist: the blueprint importer
+          # leaves it EMPTY on create (unlike the UI/serializer default), and an
+          # empty list rejects response_type=code as "otherwise malformed".
+          grant_types:
+            - authorization_code
+            - refresh_token
           client_id: patchmon
           sub_mode: user_username
           authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]

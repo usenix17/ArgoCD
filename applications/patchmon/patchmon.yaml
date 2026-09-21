@@ -1,0 +1,293 @@
+---
+# PatchMon -- Linux/FreeBSD/Windows patch monitoring (github.com/PatchMon/PatchMon).
+# Go server (React embedded) + Postgres 17 + Redis 7 (Asynq) + guacd (remote
+# sessions; a server healthcheck dependency in upstream compose). Agents are
+# outbound-only over HTTPS/WSS -> Traefik handles WSS natively.
+# Secrets from OpenBao cluster/patchmon-secrets via ESO. OIDC (Authentik) is a
+# planned follow-up -- local auth for first-run.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: patchmon
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: patchmon-secrets
+  namespace: patchmon
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao
+    kind: ClusterSecretStore
+  target:
+    name: patchmon-secrets
+    creationPolicy: Owner
+  dataFrom:
+    - extract:
+        key: cluster/patchmon-secrets
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: patchmon-postgres
+  namespace: patchmon
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 8Gi
+  storageClassName: longhorn
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: patchmon-redis
+  namespace: patchmon
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: longhorn
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: patchmon-postgres
+  namespace: patchmon
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # Longhorn RWO
+  selector:
+    matchLabels:
+      app: patchmon-postgres
+  template:
+    metadata:
+      labels:
+        app: patchmon-postgres
+    spec:
+      securityContext:
+        fsGroup: 70
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef: { name: patchmon-secrets, key: POSTGRES_USER }
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef: { name: patchmon-secrets, key: POSTGRES_DB }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: patchmon-secrets, key: POSTGRES_PASSWORD }
+          ports:
+            - { containerPort: 5432 }
+          volumeMounts:
+            # subPath: ext4 lost+found at the mount root breaks initdb
+            - name: data
+              mountPath: /var/lib/postgresql/data
+              subPath: pgdata
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, patchmon_user, -d, patchmon_db]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "1", memory: 1Gi }
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: patchmon-postgres
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: patchmon-postgres
+  namespace: patchmon
+spec:
+  selector:
+    app: patchmon-postgres
+  ports:
+    - { port: 5432, targetPort: 5432 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: patchmon-redis
+  namespace: patchmon
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # Longhorn RWO
+  selector:
+    matchLabels:
+      app: patchmon-redis
+  template:
+    metadata:
+      labels:
+        app: patchmon-redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          command: ["sh", "-c", "exec redis-server --requirepass \"$REDIS_PASSWORD\" --appendonly yes"]
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: patchmon-secrets, key: REDIS_PASSWORD }
+          ports:
+            - { containerPort: 6379 }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+          readinessProbe:
+            exec:
+              command: [sh, -c, "redis-cli --no-auth-warning -a \"$REDIS_PASSWORD\" ping | grep -q PONG"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: patchmon-redis
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: patchmon-redis
+  namespace: patchmon
+spec:
+  selector:
+    app: patchmon-redis
+  ports:
+    - { port: 6379, targetPort: 6379 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: patchmon-guacd
+  namespace: patchmon
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: patchmon-guacd
+  template:
+    metadata:
+      labels:
+        app: patchmon-guacd
+    spec:
+      containers:
+        - name: guacd
+          image: guacamole/guacd:1.6.0
+          ports:
+            - { containerPort: 4822 }
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            tcpSocket: { port: 4822 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: "1", memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: patchmon-guacd
+  namespace: patchmon
+spec:
+  selector:
+    app: patchmon-guacd
+  ports:
+    - { port: 4822, targetPort: 4822 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: patchmon
+  namespace: patchmon
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: patchmon
+  template:
+    metadata:
+      labels:
+        app: patchmon
+    spec:
+      containers:
+        - name: patchmon
+          image: ghcr.io/patchmon/patchmon-server:v2.1.3
+          envFrom:
+            - secretRef:
+                name: patchmon-secrets
+          env:
+            - { name: PORT, value: "3000" }
+            - { name: APP_ENV, value: "production" }
+            - { name: TZ, value: "America/Chicago" }
+            - { name: POSTGRES_HOST, value: "patchmon-postgres" }
+            - { name: REDIS_HOST, value: "patchmon-redis" }
+            - { name: REDIS_PORT, value: "6379" }
+            - { name: GUACD_ADDRESS, value: "patchmon-guacd:4822" }
+            - { name: CORS_ORIGIN, value: "https://patchmon.starnix.net" }
+            - { name: TRUST_PROXY, value: "true" }
+            - { name: TRUSTED_PROXY_RANGES, value: "10.244.0.0/16" }
+          ports:
+            - { name: http, containerPort: 3000 }
+          readinessProbe:
+            httpGet: { path: /, port: 3000 }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "1", memory: 1Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: patchmon
+  namespace: patchmon
+spec:
+  selector:
+    app: patchmon
+  ports:
+    - { name: http, port: 3000, targetPort: 3000 }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: patchmon
+  namespace: patchmon
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-production"
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: patchmon.starnix.net
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: patchmon
+                port:
+                  number: 3000
+  tls:
+    - secretName: patchmon-tls
+      hosts:
+        - patchmon.starnix.net

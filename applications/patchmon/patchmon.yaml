@@ -246,6 +246,18 @@ spec:
             - { name: CORS_ORIGIN, value: "https://patchmon.starnix.net" }
             - { name: TRUST_PROXY, value: "true" }
             - { name: TRUSTED_PROXY_RANGES, value: "10.244.0.0/16,192.168.7.0/24" }
+            # OIDC via Authentik (provider = blueprint patchmon-oidc; the
+            # client secret lands via envFrom from cluster/patchmon-secrets).
+            # TRUST_UNVERIFIED_EMAIL: authentik reports email_verified=false
+            # and PatchMon >=2.1.0 rejects that outright.
+            - { name: OIDC_ENABLED, value: "true" }
+            - { name: OIDC_ISSUER_URL, value: "https://auth.starnix.net/application/o/patchmon/" }
+            - { name: OIDC_CLIENT_ID, value: "patchmon" }
+            - { name: OIDC_REDIRECT_URI, value: "https://patchmon.starnix.net/api/v1/auth/oidc/callback" }
+            - { name: OIDC_SCOPES, value: "openid email profile" }
+            - { name: OIDC_AUTO_CREATE_USERS, value: "true" }
+            - { name: OIDC_BUTTON_TEXT, value: "Login with Authentik" }
+            - { name: OIDC_TRUST_UNVERIFIED_EMAIL, value: "true" }
           ports:
             - { name: http, containerPort: 3000 }
           readinessProbe:

@@ -719,3 +719,35 @@ data:
           name: Pulse
           provider: !KeyOf pulse-oidc-provider
           meta_launch_url: https://pulse.starnix.net
+  patchmon-oidc.yaml: |
+    # Authentik blueprint: native OIDC for PatchMon (patchmon.starnix.net).
+    # Same pattern as pulse-oidc: fixed client_id, authentik autogenerates the
+    # client_secret (copied once into OpenBao cluster/patchmon-secrets as
+    # OIDC_CLIENT_SECRET -- never in git), RS256 signing key, sub = username.
+    # PatchMon gotchas: callback is /api/v1/auth/oidc/callback, and authentik
+    # reports email_verified=false -> server env sets OIDC_TRUST_UNVERIFIED_EMAIL.
+    version: 1
+    metadata:
+      name: patchmon-oidc
+    entries:
+      - model: authentik_providers_oauth2.oauth2provider
+        id: patchmon-oidc-provider
+        identifiers:
+          name: patchmon-oidc
+        attrs:
+          client_type: confidential
+          client_id: patchmon
+          sub_mode: user_username
+          authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+          invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+          signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+          redirect_uris:
+            - matching_mode: strict
+              url: https://patchmon.starnix.net/api/v1/auth/oidc/callback
+      - model: authentik_core.application
+        identifiers:
+          slug: patchmon
+        attrs:
+          name: PatchMon
+          provider: !KeyOf patchmon-oidc-provider
+          meta_launch_url: https://patchmon.starnix.net

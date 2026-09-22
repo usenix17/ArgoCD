@@ -1,0 +1,178 @@
+---
+# Nightly auto-patch bridge for PatchMon.
+# Upstream #713 (github.com/PatchMon/PatchMon/issues/713): patch POLICIES are
+# stored but never executed -- the server registers no asynq scheduler entry for
+# them, so a "3 AM" policy never fires. This CronJob is the bridge: it logs in as
+# a dedicated least-privilege service account (svc-patch-cron, role host_manager)
+# and calls the same POST /patching/trigger the "Patch now" button uses, for each
+# active host in the "Auto-Patch" group that actually has updates. Delete this
+# once upstream ships a working scheduler.
+#
+# Scope is managed in the PatchMon UI via the "Auto-Patch" host group -- add or
+# remove members there, no manifest change needed. Excluded on purpose:
+# hypervisors (pve1-5) and auth/infra (ipa9, hecate) stay on reviewed manual
+# windows. patch_all applies packages only; it never reboots.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: patchmon-cron-secrets
+  namespace: patchmon
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao
+    kind: ClusterSecretStore
+  target:
+    name: patchmon-cron-secrets
+    creationPolicy: Owner
+  dataFrom:
+    - extract:
+        key: cluster/patchmon-cron
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: patchmon-autopatch-script
+  namespace: patchmon
+data:
+  autopatch.py: |
+    #!/usr/bin/env python3
+    """Trigger patch_all on every eligible host in a PatchMon group.
+
+    Bridges upstream #713 (policy scheduler not implemented). Talks only to the
+    in-cluster PatchMon service over plain HTTP; sends an explicit Host header
+    because PatchMon 403s unknown Hosts. Stdlib only.
+    """
+    import json
+    import os
+    import sys
+    import urllib.error
+    import urllib.request
+
+    BASE = os.environ["PATCHMON_URL"].rstrip("/")
+    HOST_HEADER = os.environ["PATCHMON_HOST"]
+    GROUP = os.environ["GROUP_NAME"]
+    USERNAME = os.environ["USERNAME"]
+    PASSWORD = os.environ["PASSWORD"]
+    PATCH_TYPE = os.environ.get("PATCH_TYPE", "patch_all")
+
+
+    def call(method, path, token=None, body=None):
+        """Issue one JSON request and return the decoded response."""
+        url = f"{BASE}/api/v1{path}"
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(url, data=data, method=method)
+        req.add_header("Host", HOST_HEADER)
+        req.add_header("Content-Type", "application/json")
+        if token:
+            req.add_header("Authorization", f"Bearer {token}")
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read().decode()
+        return json.loads(raw) if raw else {}
+
+
+    def in_group(host):
+        """True if the host belongs to the target group."""
+        for mem in host.get("host_group_memberships", []):
+            if mem.get("host_groups", {}).get("name") == GROUP:
+                return True
+        return False
+
+
+    def main():
+        token = call("POST", "/auth/login",
+                     body={"username": USERNAME, "password": PASSWORD})["token"]
+        hosts = call("GET", "/dashboard/hosts", token=token)
+
+        eligible, skipped = [], []
+        for host in hosts:
+            name = host.get("friendly_name", host.get("id"))
+            if not in_group(host):
+                continue
+            if host.get("effectiveStatus") != "active" or host.get("isStale"):
+                skipped.append(f"{name} (offline/stale)")
+            elif not host.get("updatesCount"):
+                skipped.append(f"{name} (no updates)")
+            else:
+                eligible.append(host)
+
+        print(f"group={GROUP} eligible={len(eligible)} skipped={len(skipped)}")
+        for item in skipped:
+            print(f"  skip {item}")
+
+        failures = 0
+        for host in eligible:
+            name = host.get("friendly_name", host.get("id"))
+            try:
+                call("POST", "/patching/trigger", token=token,
+                     body={"host_id": host["id"], "patch_type": PATCH_TYPE})
+                print(f"  triggered {name} ({host['updatesCount']} updates)")
+            except urllib.error.HTTPError as err:
+                failures += 1
+                print(f"  FAILED {name}: HTTP {err.code} {err.read().decode()[:200]}")
+            except (urllib.error.URLError, KeyError) as err:
+                failures += 1
+                print(f"  FAILED {name}: {err}")
+
+        print(f"done: {len(eligible) - failures} triggered, {failures} failed")
+        sys.exit(1 if failures else 0)
+
+
+    if __name__ == "__main__":
+        main()
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: patchmon-autopatch
+  namespace: patchmon
+spec:
+  schedule: "0 3 * * *"
+  timeZone: America/Chicago      # k8s CronJob timeZone (GA 1.27+)
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 604800   # keep finished pods a week for review
+      template:
+        metadata:
+          labels:
+            app: patchmon-autopatch
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: autopatch
+              image: python:3.12-alpine
+              command: ["python3", "/script/autopatch.py"]
+              env:
+                - { name: PATCHMON_URL, value: "http://patchmon:3000" }
+                - { name: PATCHMON_HOST, value: "patchmon.starnix.net" }
+                - { name: GROUP_NAME, value: "Auto-Patch" }
+                - name: USERNAME
+                  valueFrom:
+                    secretKeyRef: { name: patchmon-cron-secrets, key: USERNAME }
+                - name: PASSWORD
+                  valueFrom:
+                    secretKeyRef: { name: patchmon-cron-secrets, key: PASSWORD }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - { name: script, mountPath: /script, readOnly: true }
+              resources:
+                requests: { cpu: 25m, memory: 64Mi }
+                limits: { cpu: 250m, memory: 128Mi }
+          volumes:
+            - name: script
+              configMap:
+                name: patchmon-autopatch-script

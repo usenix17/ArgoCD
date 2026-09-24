@@ -131,13 +131,17 @@ data:
       </syscheck>
 
       <global>
-        <!-- Only loopback is exempt from auto-ban; internal (LAN/k8s/mesh)
-             source IPs ARE subject to firewall-drop so lateral movement and a
-             compromised internal host brute-forcing an agent get banned too.
-             Trade-off: repeated failed SSH from an internal IP (e.g. a mistyped
-             password) will ban that IP on the attacked host for the AR timeout. -->
+        <!-- Loopback and the admin workstation (selene, 172.16.4.67) are exempt
+             from auto-ban. Other internal (LAN/k8s/mesh) source IPs ARE subject
+             to firewall-drop so lateral movement and a compromised internal host
+             brute-forcing an agent get banned too. Trade-off: repeated failed SSH
+             from a non-exempt internal IP (e.g. a mistyped password) will ban that
+             IP on the attacked host for the AR timeout. selene is whitelisted
+             because rapid admin SSH self-tripped rule 5720 (the ssh config offers
+             the vault-oidc cert first -> a logged "Failed publickey" per login). -->
         <white_list>127.0.0.1</white_list>
         <white_list>^localhost.localdomain$</white_list>
+        <white_list>172.16.4.67</white_list>
       </global>
 
       <command>

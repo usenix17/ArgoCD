@@ -145,7 +145,8 @@ data:
 
     CUR=$(curl -fsS --cacert "$CA" -H "Authorization: Bearer $TOKEN" \
       "$API/apis/externaldns.k8s.io/v1alpha1/namespaces/$NS/dnsendpoints/$EP" \
-      | grep -o '"targets":\[[^]]*\]' | grep -o '[0-9][0-9.]*' | head -1 || true)
+      | tr -d ' \n' | grep -oE '"targets":\["[0-9.]+"' \
+      | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1 || true)
     echo "WAN IP=$WANIP  current DNSEndpoint target=${CUR:-none}"
     if [ "$WANIP" = "$CUR" ]; then
       echo "unchanged; nothing to do"

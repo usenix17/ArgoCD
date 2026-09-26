@@ -23,6 +23,13 @@ rules:
 - apiGroups: ["traefik.io", "traefik.containo.us"]
   resources: ["ingressroutes", "ingressroutetcps", "ingressrouteudps"]
   verbs: ["get", "watch", "list"]
+# DNSEndpoint CRs (crd source) -- used for DDNS records like the WAN-tracked oma.
+- apiGroups: ["externaldns.k8s.io"]
+  resources: ["dnsendpoints"]
+  verbs: ["get", "watch", "list"]
+- apiGroups: ["externaldns.k8s.io"]
+  resources: ["dnsendpoints/status"]
+  verbs: ["get", "update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -60,6 +67,10 @@ spec:
         - --source=ingress
         - --source=service
         - --source=traefik-proxy
+        # DNSEndpoint CRs (DDNS -- e.g. oma tracks the WAN IP via a CronJob)
+        - --source=crd
+        - --crd-source-apiversion=externaldns.k8s.io/v1alpha1
+        - --crd-source-kind=DNSEndpoint
         # Only watch traefik.io (v3) IngressRoutes. Without this, the source also
         # tries the legacy traefik.containo.us (v2) group, whose CRD doesn't
         # exist here -> the informer never syncs and ExternalDNS crash-loops.

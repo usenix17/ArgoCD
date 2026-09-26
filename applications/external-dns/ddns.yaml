@@ -1,0 +1,202 @@
+---
+# DDNS: keep WAN-facing records fresh in internal DNS (knot) via external-dns.
+# A CronJob detects the current WAN IP and patches a DNSEndpoint CR; external-dns
+# (crd source) reconciles it into knot over RFC2136. Fixes stale hardcoded WAN
+# A records (e.g. oma was pinned to a long-dead WAN IP). See project-plan / memory
+# project_ddns_externaldns.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: dnsendpoints.externaldns.k8s.io
+spec:
+  group: externaldns.k8s.io
+  names:
+    kind: DNSEndpoint
+    listKind: DNSEndpointList
+    plural: dnsendpoints
+    singular: dnsendpoint
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                endpoints:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      dnsName: { type: string }
+                      targets:
+                        type: array
+                        items: { type: string }
+                      recordType: { type: string }
+                      recordTTL: { type: integer, format: int64 }
+                      labels:
+                        type: object
+                        additionalProperties: { type: string }
+                      providerSpecific:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name: { type: string }
+                            value: { type: string }
+            status:
+              type: object
+              properties:
+                observedGeneration: { type: integer, format: int64 }
+      additionalPrinterColumns:
+        - name: DNSName
+          type: string
+          jsonPath: .spec.endpoints[0].dnsName
+        - name: Targets
+          type: string
+          jsonPath: .spec.endpoints[0].targets
+---
+# oma.starnix.net -> home WAN IP (SSH bastion entry; UDM port-forwards :2222 to
+# the warpgate jail 192.168.1.58). Seeded with the current WAN IP; the CronJob
+# keeps .spec.endpoints[0].targets current. TTL kept low so changes propagate.
+apiVersion: externaldns.k8s.io/v1alpha1
+kind: DNSEndpoint
+metadata:
+  name: oma
+  namespace: external-dns
+spec:
+  endpoints:
+    - dnsName: oma.starnix.net
+      recordType: A
+      recordTTL: 120
+      targets:
+        - 38.3.16.146
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ddns-updater
+  namespace: external-dns
+---
+# The updater only needs to read + patch the oma DNSEndpoint in its own namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ddns-updater
+  namespace: external-dns
+rules:
+  - apiGroups: ["externaldns.k8s.io"]
+    resources: ["dnsendpoints"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ddns-updater
+  namespace: external-dns
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ddns-updater
+subjects:
+  - kind: ServiceAccount
+    name: ddns-updater
+    namespace: external-dns
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ddns-updater-script
+  namespace: external-dns
+data:
+  update.sh: |
+    #!/bin/sh
+    # Detect the current WAN IP and, if changed, patch the oma DNSEndpoint so
+    # external-dns republishes it to knot. Talks to the k8s API with the pod SA
+    # token (curl only -- no kubectl image needed).
+    set -eu
+    API=https://kubernetes.default.svc
+    NS=external-dns
+    EP=oma
+    TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+    CA=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+
+    # WAN IP with a couple of fallbacks; must be a bare IPv4.
+    WANIP=""
+    for u in https://api.ipify.org https://ifconfig.me/ip https://icanhazip.com; do
+      WANIP=$(curl -fsS --max-time 10 "$u" 2>/dev/null | tr -d '[:space:]') || true
+      echo "$WANIP" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' && break
+      WANIP=""
+    done
+    if [ -z "$WANIP" ]; then
+      echo "could not determine WAN IP; leaving DNS unchanged" >&2
+      exit 1
+    fi
+
+    CUR=$(curl -fsS --cacert "$CA" -H "Authorization: Bearer $TOKEN" \
+      "$API/apis/externaldns.k8s.io/v1alpha1/namespaces/$NS/dnsendpoints/$EP" \
+      | grep -o '"targets":\[[^]]*\]' | grep -o '[0-9][0-9.]*' | head -1 || true)
+    echo "WAN IP=$WANIP  current DNSEndpoint target=${CUR:-none}"
+    if [ "$WANIP" = "$CUR" ]; then
+      echo "unchanged; nothing to do"
+      exit 0
+    fi
+
+    echo "updating oma -> $WANIP"
+    curl -fsS --cacert "$CA" -H "Authorization: Bearer $TOKEN" \
+      -H "Content-Type: application/merge-patch+json" -X PATCH \
+      "$API/apis/externaldns.k8s.io/v1alpha1/namespaces/$NS/dnsendpoints/$EP" \
+      -d "{\"spec\":{\"endpoints\":[{\"dnsName\":\"oma.starnix.net\",\"recordType\":\"A\",\"recordTTL\":120,\"targets\":[\"$WANIP\"]}]}}" \
+      >/dev/null
+    echo "patched"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ddns-updater
+  namespace: external-dns
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app: ddns-updater
+        spec:
+          restartPolicy: Never
+          serviceAccountName: ddns-updater
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: updater
+              image: curlimages/curl:8.10.1
+              command: ["sh", "/script/update.sh"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - { name: script, mountPath: /script, readOnly: true }
+              resources:
+                requests: { cpu: 10m, memory: 16Mi }
+                limits: { cpu: 100m, memory: 64Mi }
+          volumes:
+            - name: script
+              configMap:
+                name: ddns-updater-script

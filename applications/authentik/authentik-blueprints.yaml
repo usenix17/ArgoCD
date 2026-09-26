@@ -789,6 +789,22 @@ data:
     metadata:
       name: warpgate-oidc
     entries:
+      # Custom email scope mapping: Warpgate rejects SSO when email_verified is
+      # absent/false, and authentik does not put email_verified in the id_token by
+      # default (Warpgate reads it there). This mapping forces email +
+      # email_verified=true; it REPLACES the managed scope-email on this provider.
+      - model: authentik_providers_oauth2.scopemapping
+        id: warpgate-scope-email-verified
+        identifiers:
+          name: warpgate-email-verified
+        attrs:
+          scope_name: email
+          description: "Warpgate: email + email_verified=true"
+          expression: |
+            return {
+                "email": request.user.email,
+                "email_verified": True,
+            }
       - model: authentik_providers_oauth2.oauth2provider
         id: warpgate-oidc-provider
         identifiers:
@@ -805,7 +821,8 @@ data:
           # (profile also carries the groups claim Warpgate maps to roles).
           property_mappings:
             - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-openid]]
-            - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-email]]
+            # custom email mapping (email_verified=true) instead of the managed one
+            - !KeyOf warpgate-scope-email-verified
             - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-profile]]
           client_id: warpgate
           sub_mode: user_username

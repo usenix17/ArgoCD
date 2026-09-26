@@ -202,7 +202,7 @@ data:
       originRequest:
         noTLSVerify: true
     - hostname: warp.starnix.net
-      service: https://192.168.1.106
+      service: https://192.168.1.58
       originRequest:
         noTLSVerify: true
 

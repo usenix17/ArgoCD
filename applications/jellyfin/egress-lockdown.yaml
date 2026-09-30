@@ -25,6 +25,16 @@ spec:
     # within its own namespace
     - to:
         - podSelector: {}
+    # OIDC (SSO plugin): reach authentik for discovery/token/userinfo. auth.starnix.net
+    # resolves in-cluster to the traefik ingress ClusterIP, so allow egress to the
+    # traefik namespace on 443 (namespaceSelector -- ipBlock can't match in-cluster IPs).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+      ports:
+        - protocol: TCP
+          port: 443
     # LAN + public internet; block only the cluster (pods/svc/API = 10/8),
     # the cluster node subnet + MetalLB (192.168.7.0/24), Tailscale, link-local
     - to:

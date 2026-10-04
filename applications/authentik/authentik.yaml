@@ -134,6 +134,36 @@ spec:
       storage: 1Gi
   storageClassName: manual
 ---
+# media + templates migrated off NFS onto Longhorn (RWX via share-manager, which
+# rides the cluster's Cilium WireGuard east-west encryption). Mirrors the earlier
+# postgres/redis move above. Data copied from the NFS PVCs before the deployments
+# were repointed to these claims.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: authentik-media-lh
+  namespace: authentik
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: longhorn
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: authentik-templates-lh
+  namespace: authentik
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: longhorn
+---
 # PostgreSQL
 apiVersion: apps/v1
 kind: Deployment

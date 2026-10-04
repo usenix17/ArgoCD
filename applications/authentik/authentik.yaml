@@ -330,10 +330,10 @@ spec:
       volumes:
       - name: authentik-media
         persistentVolumeClaim:
-          claimName: authentik-media
+          claimName: authentik-media-lh
       - name: authentik-templates
         persistentVolumeClaim:
-          claimName: authentik-templates
+          claimName: authentik-templates-lh
 ---
 apiVersion: v1
 kind: Service
@@ -413,10 +413,10 @@ spec:
       volumes:
       - name: authentik-media
         persistentVolumeClaim:
-          claimName: authentik-media
+          claimName: authentik-media-lh
       - name: authentik-templates
         persistentVolumeClaim:
-          claimName: authentik-templates
+          claimName: authentik-templates-lh
       - name: blueprint-posix
         configMap:
           name: authentik-blueprint-posix

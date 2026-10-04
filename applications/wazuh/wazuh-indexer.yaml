@@ -107,7 +107,7 @@ metadata:
   namespace: wazuh
 spec:
   serviceName: wazuh-indexer
-  replicas: 0            # temporarily 0 for the NFS->Longhorn data copy; restored to 1 at cutover
+  replicas: 1
   selector:
     matchLabels:
       app: wazuh-indexer
@@ -210,4 +210,4 @@ spec:
         emptyDir: {}
       - name: data
         persistentVolumeClaim:
-          claimName: wazuh-indexer-data
+          claimName: wazuh-indexer-data-lh

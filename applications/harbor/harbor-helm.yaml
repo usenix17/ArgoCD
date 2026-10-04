@@ -41,7 +41,7 @@ spec:
           resourcePolicy: "keep"
           persistentVolumeClaim:
             registry:
-              existingClaim: harbor-registry
+              existingClaim: harbor-registry-lh
             jobservice:
               jobLog:
                 storageClass: longhorn
@@ -67,11 +67,6 @@ spec:
 
         trivy:
           enabled: true
-
-        # Temporarily 0 while the registry blob store is copied NFS -> Longhorn;
-        # restored to 1 at cutover (same commit that flips existingClaim).
-        registry:
-          replicas: 0
 
         # Recreate (not RollingUpdate) for the PV-backed deployments (jobservice,
         # registry): they use Longhorn RWO volumes, so a surge pod landing on a

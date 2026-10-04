@@ -17,6 +17,20 @@
 ipam:
   mode: kubernetes
 
+# --- Transparent encryption (WireGuard) ---
+# Encrypts pod-to-pod traffic BETWEEN nodes. The data plane rides the shared
+# 192.168.7.0/24 VLAN on the Proxmox hypervisors (the Talos nodes are VMs on
+# pve1-5), so this keeps east-west pod traffic unreadable to the hypervisor and
+# anything else on that L2. North-south (pod -> LAN/NFS/internet, masqueraded to
+# the node IP) stays cleartext, so the huginn NSM tap keeps its per-host/external
+# flow visibility; only intra-cluster east-west becomes opaque (udp/51871).
+# Talos ships the WireGuard kernel module; Cilium creates cilium_wg0 via NET_ADMIN
+# (already granted above). node2node (host) encryption left default-off = pod-only.
+# MTU: Cilium auto-subtracts VXLAN+WG overhead from the pod MTU (no manual MTU).
+encryption:
+  enabled: true
+  type: wireguard
+
 # --- MetalLB coexistence (CRITICAL) ---
 # MetalLB owns LoadBalancer services (L2 mode, pool 192.168.7.206-250). Cilium
 # ships with LB-IPAM enabled by default (enable-lb-ipam: true), which would arm

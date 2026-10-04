@@ -29,6 +29,7 @@ spec:
                 hosts:
                   - prometheus.starnix.net
           prometheusSpec:
+            replicas: 0            # temporarily 0 for the NFS->Longhorn TSDB copy; restored (removed) at cutover
             enableRemoteWriteReceiver: true
             retention: 30d
             # WAL and chunks_head on emptyDir to keep compaction I/O off NFS

@@ -81,7 +81,10 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 5Gi
+      # HA's recorder DB is ~17 GB logical (compresses ~9:1 on the NAS ZFS, so it
+      # looked like 1.9 GB on NFS). Longhorn is thin-provisioned -- only actual bytes
+      # are consumed. Quarantined *.corrupt.* junk is excluded from the copy.
+      storage: 25Gi
   storageClassName: longhorn
 
 ---

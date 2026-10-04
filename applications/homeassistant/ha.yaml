@@ -68,6 +68,23 @@ spec:
   storageClassName: "" # Empty string to bind to the specific PV without a StorageClass
 
 ---
+# Longhorn target (RWO block storage) -- HA's SQLite recorder belongs on block
+# storage, and Longhorn rides the cluster WireGuard east-west encryption. Replaces
+# the NFS config PVC above; data copied before the Deployment was repointed.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: homeassistant-config-lh
+  namespace: homeassistant
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: longhorn
+
+---
 # 5. Deployment
 # Manages the Home Assistant application pod.
 apiVersion: apps/v1
@@ -78,7 +95,9 @@ metadata:
   labels:
     app: homeassistant
 spec:
-  replicas: 1
+  replicas: 0            # temporarily 0 for the NFS->Longhorn data copy; restored to 1 at cutover
+  strategy:
+    type: Recreate       # RWO Longhorn: avoid the RollingUpdate multi-attach deadlock
   selector:
     matchLabels:
       app: homeassistant

@@ -33,6 +33,23 @@ spec:
       storage: 50Gi
 
 ---
+# Indexer data on Longhorn (RWO block) -- OpenSearch is write/IOPS-heavy SIEM data;
+# rides the cluster WireGuard. ~15 GiB logical; 30Gi headroom (thin-provisioned).
+# Data copied from the NFS claim before the indexer STS was repointed.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wazuh-indexer-data-lh
+  namespace: wazuh
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 30Gi
+
+---
 apiVersion: v1
 kind: PersistentVolume
 metadata:

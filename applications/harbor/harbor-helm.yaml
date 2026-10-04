@@ -68,6 +68,11 @@ spec:
         trivy:
           enabled: true
 
+        # Temporarily 0 while the registry blob store is copied NFS -> Longhorn;
+        # restored to 1 at cutover (same commit that flips existingClaim).
+        registry:
+          replicas: 0
+
         # Recreate (not RollingUpdate) for the PV-backed deployments (jobservice,
         # registry): they use Longhorn RWO volumes, so a surge pod landing on a
         # different node deadlocks on multi-attach. This is the chart's TOP-LEVEL

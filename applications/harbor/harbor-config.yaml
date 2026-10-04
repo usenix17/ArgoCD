@@ -28,6 +28,24 @@ spec:
     requests:
       storage: 50Gi
 ---
+# Longhorn target for the registry blob store (the last Harbor component on NFS;
+# db/redis/jobservice/trivy already moved). RWO + the chart's top-level
+# updateStrategy: Recreate avoids multi-attach. Rides the cluster WireGuard.
+# 60Gi headroom (thin-provisioned); image layers are already compressed so logical
+# ~= disk. Data copied from the NFS claim before existingClaim was repointed.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: harbor-registry-lh
+  namespace: harbor
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 60Gi
+---
 # harbor-secrets: synced from OpenBao secret/cluster/harbor-secrets via ESO (ClusterSecretStore 'openbao').
 # Migrated from a VSO VaultStaticSecret.
 apiVersion: external-secrets.io/v1

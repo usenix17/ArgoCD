@@ -171,6 +171,11 @@ spec:
       containers:
       - name: freescout
         image: tiredofit/freescout:latest
+        # IfNotPresent: use the cached image instead of re-pulling on every start.
+        # :latest defaults to Always, which forced a Docker Hub pull on reschedule
+        # and hit anonymous rate-limit/auth denials -> ImagePullBackOff despite the
+        # image being cached on-node. (Pin to a version tag/digest later.)
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
         env:

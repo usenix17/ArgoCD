@@ -383,6 +383,18 @@ spec:
       labels:
         app: authentik-worker
     spec:
+      # Co-locate with authentik-server so the shared RWX media/templates volumes
+      # only ever attach on ONE node. When server+worker split across nodes,
+      # Longhorn tries to live-migrate the RWX volumes between them and wedges with
+      # a dual controller ("invalid controller count 2"), which took authentik down
+      # twice during the 2026-10 node reboots. Same-node = no migration = no wedge.
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: authentik-server
+              topologyKey: kubernetes.io/hostname
       tolerations:
       - key: "node-role.kubernetes.io/control-plane"
         operator: "Exists"

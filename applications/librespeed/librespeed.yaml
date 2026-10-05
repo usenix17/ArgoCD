@@ -9,23 +9,7 @@ metadata:
     name: librespeed
 
 ---
-# 2. PersistentVolumeClaim (Longhorn)
-# This claim dynamically provisions a volume using the 'longhorn' storage class.
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: librespeed-config-pvc
-  namespace: librespeed
-spec:
-  accessModes:
-    - ReadWriteMany # Corresponds to Nomad's "multi-node-multi-writer"
-  resources:
-    requests:
-      storage: 1Gi # A reasonable size for the configuration; adjust as needed
-  storageClassName: longhorn
-
----
-# 3. Deployment
+# 2. Deployment
 # Manages the Librespeed application pods.
 apiVersion: apps/v1
 kind: Deployment
@@ -79,9 +63,13 @@ spec:
         - name: config-volume
           mountPath: /config # Mount path inside the container
       volumes:
+      # Ephemeral per-pod config. The linuxserver image regenerates /config on
+      # start (nginx/php/keys/default www), so there's no durable data to keep.
+      # Previously a single shared RWX Longhorn PVC across 3 replicas -> concurrent
+      # writers racing on /config + Longhorn live-migration dual-controller wedge
+      # when the replicas split across nodes. Per-pod emptyDir removes both risks.
       - name: config-volume
-        persistentVolumeClaim:
-          claimName: librespeed-config-pvc # The PVC to be claimed
+        emptyDir: {}
 
 ---
 # 4. Service

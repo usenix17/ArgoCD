@@ -32,10 +32,17 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      # Bumped 5Gi -> 20Gi: the metrics SQLite had filled the volume (94%),
-      # so WAL/vacuum/retention thrashed (30s+ queries) and pulse's web server
-      # stopped answering :7655. Longhorn online-expands (allowVolumeExpansion).
-      storage: 20Gi
+      storage: 20Gi            # headroom for the metrics SQLite (online-expandable)
+  # SINGLE-REPLICA -- deliberate exception to the "always 3 replicas" rule.
+  # pulse writes metrics to SQLite continuously; at 3x replication over WireGuard
+  # each write was ~16ms -> 1.6-2.9s INSERTs -> the UI/readiness timed out and
+  # pulse was effectively down. One replica = local writes (~3ms) and it serves
+  # fine. The data is regenerable metrics + small config, so the redundancy trade
+  # is acceptable. The StorageClass below is the 3-replica default, so the replica
+  # count is pinned on the LIVE Longhorn volume (the PVC can't be recreated onto a
+  # 1-replica SC without losing the /data config). Re-apply if ever recreated:
+  #   kubectl -n longhorn-system patch volumes.longhorn.io <pv-name> \
+  #     --type merge -p '{"spec":{"numberOfReplicas":1}}'
   storageClassName: longhorn
 ---
 apiVersion: apps/v1

@@ -34,40 +34,6 @@ metadata:
     name: homeassistant
 
 ---
-# 3. PersistentVolume (NFS)
-# Defines the NFS volume that holds the application's storage.
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: homeassistant-config-pv
-spec:
-  capacity:
-    storage: 1Gi # Assuming a reasonable size; adjust if needed
-  accessModes:
-    - ReadWriteMany # Corresponds to Nomad's "multi-node-multi-writer"
-  persistentVolumeReclaimPolicy: Retain
-  nfs:
-    server: "192.168.1.75"
-    path: "/mnt/Store/nomad/homeassistant/config" # Path from your Nomad volume spec
-
----
-# 4. PersistentVolumeClaim
-# A claim for the NFS volume, which the Home Assistant pod will use.
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: homeassistant-config-pvc
-  namespace: homeassistant
-spec:
-  accessModes:
-    - ReadWriteMany
-  resources:
-    requests:
-      storage: 1Gi
-  volumeName: homeassistant-config-pv
-  storageClassName: "" # Empty string to bind to the specific PV without a StorageClass
-
----
 # Longhorn target (RWO block storage) -- HA's SQLite recorder belongs on block
 # storage, and Longhorn rides the cluster WireGuard east-west encryption. Replaces
 # the NFS config PVC above; data copied before the Deployment was repointed.

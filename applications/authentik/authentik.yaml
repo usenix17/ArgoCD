@@ -44,40 +44,6 @@ data:
 #   --from-literal=AUTHENTIK_SECRET_KEY="..." \
 #   --from-literal=AUTHENTIK_EMAIL__PASSWORD="..."
 ---
-# Persistent Volumes (NFS) -- media + templates only. Postgres and Redis data
-# were moved off NFS onto Longhorn (block storage) to eliminate the NFS
-# file-locking / fsync-durability corruption risk for the databases; see the
-# postgresql-data-lh / redis-data-lh PVCs below.
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: authentik-media-pv
-spec:
-  capacity:
-    storage: 5Gi
-  accessModes:
-    - ReadWriteMany
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  nfs:
-    server: 192.168.1.75
-    path: /mnt/Store/authentik/media
----
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: authentik-templates-pv
-spec:
-  capacity:
-    storage: 1Gi
-  accessModes:
-    - ReadWriteMany
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  nfs:
-    server: 192.168.1.75
-    path: /mnt/Store/authentik/custom-templates
----
 # Persistent Volume Claims
 # Postgres + Redis data on Longhorn (dynamically provisioned, 3 replicas via the
 # default longhorn StorageClass) instead of NFS -- proper POSIX locking + honest
@@ -107,32 +73,6 @@ spec:
     requests:
       storage: 5Gi
   storageClassName: longhorn
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: authentik-media
-  namespace: authentik
-spec:
-  accessModes:
-    - ReadWriteMany
-  resources:
-    requests:
-      storage: 5Gi
-  storageClassName: manual
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: authentik-templates
-  namespace: authentik
-spec:
-  accessModes:
-    - ReadWriteMany
-  resources:
-    requests:
-      storage: 1Gi
-  storageClassName: manual
 ---
 # media + templates migrated off NFS onto Longhorn (RWX via share-manager, which
 # rides the cluster's Cilium WireGuard east-west encryption). Mirrors the earlier

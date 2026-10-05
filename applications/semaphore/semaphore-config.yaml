@@ -23,67 +23,10 @@ spec:
     - extract:
         key: cluster/semaphore-secrets
 ---
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: semaphore-workdir-pv
-spec:
-  capacity:
-    storage: 10Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  nfs:
-    server: 192.168.1.75
-    path: /mnt/Store/semaphore/workdir
----
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: semaphore-postgres-pv
-spec:
-  capacity:
-    storage: 10Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  nfs:
-    server: 192.168.1.75
-    path: /mnt/Store/semaphore/postgres
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: semaphore-workdir
-  namespace: semaphore
-spec:
-  volumeName: semaphore-workdir-pv
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 10Gi
-  storageClassName: manual
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: semaphore-postgres
-  namespace: semaphore
-spec:
-  volumeName: semaphore-postgres-pv
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 10Gi
-  storageClassName: manual
----
 # Longhorn-backed replacements (migrated off NFS 2026-09-08: Postgres + the
 # server workdir do not belong on NFS -- stale handles / locking). Dynamically
-# provisioned; the old NFS PVs above stay (Retain) as rollback until verified.
+# provisioned. The old NFS PVs/PVCs were removed 2026-10-05 after the migration
+# was verified good (NAS data retained).
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

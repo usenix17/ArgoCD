@@ -3,36 +3,6 @@
 #   mkdir -p /mnt/Store/wazuh/{indexer/data,manager/{api-configuration,etc,logs,queue,var-multigroups,integrations,active-response,agentless,wodles}}
 
 ---
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: wazuh-indexer-data-pv
-spec:
-  capacity:
-    storage: 50Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: ""
-  nfs:
-    server: 192.168.1.75
-    path: /mnt/Store/wazuh/indexer/data
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: wazuh-indexer-data
-  namespace: wazuh
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: ""
-  volumeName: wazuh-indexer-data-pv
-  resources:
-    requests:
-      storage: 50Gi
-
----
 # Indexer data on Longhorn (RWO block) -- OpenSearch is write/IOPS-heavy SIEM data;
 # rides the cluster WireGuard. ~15 GiB logical; 30Gi headroom (thin-provisioned).
 # Data copied from the NFS claim before the indexer STS was repointed.

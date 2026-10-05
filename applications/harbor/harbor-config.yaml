@@ -1,33 +1,4 @@
 ---
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: harbor-registry-pv
-spec:
-  capacity:
-    storage: 50Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  nfs:
-    server: 192.168.1.75
-    path: /mnt/Store/harbor/registry
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: harbor-registry
-  namespace: harbor
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: manual
-  volumeName: harbor-registry-pv
-  resources:
-    requests:
-      storage: 50Gi
----
 # Longhorn target for the registry blob store (the last Harbor component on NFS;
 # db/redis/jobservice/trivy already moved). RWO + the chart's top-level
 # updateStrategy: Recreate avoids multi-attach. Rides the cluster WireGuard.

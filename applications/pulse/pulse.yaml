@@ -47,6 +47,48 @@ spec:
   #     -p '{"spec":{"numberOfReplicas":1,"dataLocality":"best-effort"}}'
   storageClassName: longhorn
 ---
+# pulse system settings, GitOps-managed. The initContainer below copies this onto
+# the PVC at /data/system.json on every boot, so THIS is the source of truth --
+# edit settings here, not in the pulse UI (UI changes to these revert on restart).
+# Keeps pulse config declarative + recoverable if the /data volume is ever lost.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pulse-system-config
+  namespace: pulse
+data:
+  system.json: |
+    {
+        "pvePollingInterval": 10,
+        "pbsPollingInterval": 60,
+        "pmgPollingInterval": 60,
+        "connectionTimeout": 10,
+        "updateChannel": "stable",
+        "autoUpdateEnabled": false,
+        "discoveryEnabled": true,
+        "discoverySubnet": "192.168.7.0/24",
+        "discoveryConfig": {
+            "environment_override": "auto",
+            "subnet_blocklist": [
+                "169.254.0.0/16"
+            ],
+            "max_hosts_per_scan": 1024,
+            "max_concurrent": 50,
+            "enable_reverse_dns": true,
+            "scan_gateways": true,
+            "dial_timeout_ms": 1000,
+            "http_timeout_ms": 2000
+        },
+        "fullWidthMode": false,
+        "allowEmbedding": false,
+        "temperatureMonitoringEnabled": true,
+        "dnsCacheTimeout": 300,
+        "hideLocalLogin": false,
+        "disableDockerUpdateActions": false,
+        "enableProxmoxGuestDockerInventory": false,
+        "metricsRetentionDailyDays": 30
+    }
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -66,6 +108,19 @@ spec:
     spec:
       securityContext:
         fsGroup: 1000          # let the server write /data
+      initContainers:
+        # Seed GitOps-managed system settings onto the PVC before pulse starts, so
+        # system.json is declarative + recoverable. chown so pulse (uid 1000) can
+        # still rewrite it at runtime (it reverts to this ConfigMap on next boot).
+        - name: seed-system-config
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - cp /seed/system.json /data/system.json && chown 1000:1000 /data/system.json
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: system-config-seed, mountPath: /seed }
       containers:
         - name: pulse
           image: rcourtman/pulse:v6.4.1
@@ -114,6 +169,9 @@ spec:
             requests: { cpu: 100m, memory: 256Mi }
             limits: { cpu: "1", memory: 1Gi }
       volumes:
+        - name: system-config-seed
+          configMap:
+            name: pulse-system-config
         - name: data
           persistentVolumeClaim:
             claimName: pulse-data

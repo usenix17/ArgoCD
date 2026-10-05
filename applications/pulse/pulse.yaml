@@ -32,7 +32,10 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 5Gi
+      # Bumped 5Gi -> 20Gi: the metrics SQLite had filled the volume (94%),
+      # so WAL/vacuum/retention thrashed (30s+ queries) and pulse's web server
+      # stopped answering :7655. Longhorn online-expands (allowVolumeExpansion).
+      storage: 20Gi
   storageClassName: longhorn
 ---
 apiVersion: apps/v1
@@ -94,6 +97,8 @@ spec:
             httpGet: { path: /, port: 7655 }
             initialDelaySeconds: 10
             periodSeconds: 10
+            timeoutSeconds: 5       # / can be slow under SQLite load; 1s default flapped it
+            failureThreshold: 6     # tolerate heavy startup DB maintenance
           resources:
             # 512Mi OOMKilled once real load arrived (5-node PVE + host agents +
             # 5 k8s agents flushing buffers into the SQLite metrics store).

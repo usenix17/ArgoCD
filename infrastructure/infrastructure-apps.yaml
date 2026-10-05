@@ -778,7 +778,8 @@ spec:
             - recipients:
                 - "apprise:"
               triggers:
-                - on-sync-succeeded
+                # Only notify on problems -- on-sync-succeeded removed (it fired on
+                # every successful deploy and was flooding Discord).
                 - on-sync-failed
                 - on-health-degraded
   destination:

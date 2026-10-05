@@ -4,3 +4,17 @@ resources:
   - longhorn.yaml
   - ingress.yaml
   - recurring-jobs.yaml
+  - servicemonitor.yaml
+
+# Longhorn Grafana dashboard (grafana.com ID 13032) loaded via the
+# kube-prometheus-stack Grafana sidecar (watches ConfigMaps labeled
+# grafana_dashboard: "1" in all namespaces).
+configMapGenerator:
+  - name: longhorn-grafana-dashboard
+    namespace: longhorn-system
+    files:
+      - longhorn.json=dashboards/longhorn.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: true

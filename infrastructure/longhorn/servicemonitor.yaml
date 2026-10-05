@@ -1,0 +1,24 @@
+# Scrape Longhorn manager metrics (per-volume IOPS / throughput / latency, etc.).
+# The Longhorn chart ships no ServiceMonitor, so define one here. The
+# kube-prometheus-stack Prometheus selects ServiceMonitors labeled
+# release: monitoring. Metrics are exposed on the longhorn-backend service
+# (app: longhorn-manager) port "manager" (9500) at /metrics.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: longhorn
+  namespace: longhorn-system
+  labels:
+    release: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: longhorn-manager
+  namespaceSelector:
+    matchNames:
+      - longhorn-system
+  endpoints:
+    - port: manager
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 20s

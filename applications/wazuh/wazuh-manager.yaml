@@ -885,7 +885,7 @@ metadata:
     reloader.stakater.com/auto: "true"
 spec:
   serviceName: wazuh-manager
-  replicas: 1
+  replicas: 0            # temp 0: recreating the stuck queue volume fresh (restorable from MinIO); back to 1 after
   selector:
     matchLabels:
       app: wazuh-manager

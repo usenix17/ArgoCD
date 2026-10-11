@@ -94,16 +94,16 @@ spec:
           value: sasha@starnix.net
         - name: SYNC_BASE_URL
           value: https://krampus.starnix.net
-        # Staged sync-key rollout: log-only until the Mac's profile carries
-        # the key (reinstall from the Machines page), then flip enforce to
-        # true (or drop the var; enforce is the default).
+        # Sync endpoints require the shared key (clients carry it via the
+        # SyncExtraHeaders dict embedded in generated mobileconfigs); the
+        # RFC1918 ingress allowlist below remains as defense in depth.
         - name: SANTA_SYNC_KEY
           valueFrom:
             secretKeyRef:
               name: krampus-secrets
               key: santa-sync-key
         - name: SANTA_SYNC_ENFORCE
-          value: "false"
+          value: "true"
         - name: DISCORD_WEBHOOK_URL
           valueFrom:
             secretKeyRef:

@@ -52,7 +52,7 @@ spec:
                 - talos-1yg-rc3
       containers:
       - name: krampus
-        image: registry.starnix.net/library/krampus:9e78161
+        image: registry.starnix.net/library/krampus:ca7fcaf
         ports:
         - containerPort: 8080
         env:
@@ -94,6 +94,16 @@ spec:
           value: sasha@starnix.net
         - name: SYNC_BASE_URL
           value: https://krampus.starnix.net
+        # Staged sync-key rollout: log-only until the Mac's profile carries
+        # the key (reinstall from the Machines page), then flip enforce to
+        # true (or drop the var; enforce is the default).
+        - name: SANTA_SYNC_KEY
+          valueFrom:
+            secretKeyRef:
+              name: krampus-secrets
+              key: santa-sync-key
+        - name: SANTA_SYNC_ENFORCE
+          value: "false"
         - name: DISCORD_WEBHOOK_URL
           valueFrom:
             secretKeyRef:

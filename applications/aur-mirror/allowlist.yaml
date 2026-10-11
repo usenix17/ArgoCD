@@ -559,3 +559,45 @@ data:
       - name: kpatch
         approved: true
         note: explicit
+      - name: rackpeek
+        approved: true
+        note: explicit
+      - name: authselect
+        approved: true
+        note: dependency
+      - name: autofs
+        approved: true
+        note: dependency
+      - name: certmonger
+        approved: true
+        note: dependency
+      - name: freeipa-client
+        approved: true
+        note: explicit
+      - name: freeipa-client-common
+        approved: true
+        note: dependency
+      - name: freeipa-common
+        approved: true
+        note: dependency
+      - name: libselinux
+        approved: true
+        note: dependency
+      - name: libsepol
+        approved: true
+        note: dependency
+      - name: libxmlrpc
+        approved: true
+        note: dependency
+      - name: oddjob-selinux
+        approved: true
+        note: dependency
+      - name: python-ipaclient
+        approved: true
+        note: dependency
+      - name: python-ipalib
+        approved: true
+        note: dependency
+      - name: yp-tools
+        approved: true
+        note: dependency

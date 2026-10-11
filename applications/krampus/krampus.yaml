@@ -52,7 +52,7 @@ spec:
                 - talos-1yg-rc3
       containers:
       - name: krampus
-        image: registry.starnix.net/library/krampus:latest
+        image: registry.starnix.net/library/krampus:9e78161
         ports:
         - containerPort: 8080
         env:
@@ -80,6 +80,14 @@ spec:
               key: jwt-secret
         - name: JWT_EXPIRY
           value: 24h
+        # Traefik terminates TLS, so the app sees plain HTTP; force the
+        # Secure flag on auth cookies.
+        - name: COOKIE_SECURE
+          value: "true"
+        # Release mode also makes the app refuse to boot on a default
+        # JWT secret (real secret comes from krampus-secrets).
+        - name: GIN_MODE
+          value: release
         - name: VOTE_THRESHOLD
           value: "2"
         - name: ADMIN_EMAILS
@@ -128,7 +136,7 @@ metadata:
     gethomepage.dev/name: "Krampus"
     gethomepage.dev/description: "Santa Sync"
     gethomepage.dev/group: "Tools"
-    gethomepage.dev/icon: "https://krampus.starnix.net/favicon.ico"
+    gethomepage.dev/icon: "https://krampus.starnix.net/krampus.svg"
     gethomepage.dev/href: "https://krampus.starnix.net"
 spec:
   selector:

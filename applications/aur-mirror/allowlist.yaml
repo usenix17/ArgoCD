@@ -601,3 +601,57 @@ data:
       - name: yp-tools
         approved: true
         note: dependency
+      - name: darling-cli-devenv-gui-common-git
+        approved: true
+        note: dependency
+      - name: darling-cli-devenv-gui-stubs-common-git
+        approved: true
+        note: dependency
+      - name: darling-cli-git
+        approved: true
+        note: dependency
+      - name: darling-cli-gui-common-git
+        approved: true
+        note: dependency
+      - name: darling-cli-python2-common-git
+        approved: true
+        note: dependency
+      - name: darling-core-git
+        approved: true
+        note: dependency
+      - name: darling-ffi-git
+        approved: true
+        note: dependency
+      - name: darling-git
+        approved: true
+        note: explicit
+      - name: darling-gui-git
+        approved: true
+        note: dependency
+      - name: darling-gui-stubs-git
+        approved: true
+        note: dependency
+      - name: darling-iokitd-git
+        approved: true
+        note: dependency
+      - name: darling-iosurface-git
+        approved: true
+        note: dependency
+      - name: darling-perl-git
+        approved: true
+        note: dependency
+      - name: darling-pyobjc-git
+        approved: true
+        note: dependency
+      - name: darling-python2-git
+        approved: true
+        note: dependency
+      - name: darling-ruby-git
+        approved: true
+        note: dependency
+      - name: darling-system-git
+        approved: true
+        note: dependency
+      - name: makepkg-git-lfs-proto
+        approved: true
+        note: dependency

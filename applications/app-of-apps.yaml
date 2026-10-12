@@ -1189,24 +1189,4 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
----
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: rackpeek
-  namespace: argocd
-spec:
-  project: default
-  source:
-    repoURL: https://github.com/usenix17/ArgoCD.git
-    targetRevision: HEAD
-    path: applications/rackpeek
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: rackpeek
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
+

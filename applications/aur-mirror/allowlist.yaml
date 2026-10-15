@@ -655,3 +655,6 @@ data:
       - name: makepkg-git-lfs-proto
         approved: true
         note: dependency
+      - name: hubble-bin
+        approved: true
+        note: explicit

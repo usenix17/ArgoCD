@@ -1,15 +1,19 @@
 FROM archlinux:latest
 
-# System update + build toolchain
+# System update + build toolchain. git-lfs provides the `git-lfs` makepkg
+# download protocol that some recipes (e.g. darling-git) use for their sources;
+# `git lfs install --system` registers the smudge/clean filters for all users.
 RUN pacman -Syu --noconfirm \
     base-devel \
     devtools \
     git \
+    git-lfs \
     gnupg \
     python \
     python-pip \
     python-yaml \
     python-pytest \
+    && git lfs install --system \
     && pacman -Sc --noconfirm
 
 # Install aurutils from AUR (bootstrap via makepkg as build user)

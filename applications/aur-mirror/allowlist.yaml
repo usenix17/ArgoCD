@@ -562,6 +562,7 @@ data:
       - name: rackpeek
         approved: true
         note: explicit
+        build_timeout: 14400  # builds .NET from source; exceeds the 2h default
       - name: authselect
         approved: true
         note: dependency
@@ -625,6 +626,7 @@ data:
       - name: darling-git
         approved: true
         note: explicit
+        build_timeout: 14400  # large macOS-emulation C++ build; exceeds 2h default
       - name: darling-gui-git
         approved: true
         note: dependency

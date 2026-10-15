@@ -49,6 +49,7 @@ import tempfile
 import time
 import logging
 import urllib.request
+import urllib.parse
 from pathlib import Path
 
 import yaml
@@ -76,8 +77,13 @@ FAIL_SEVS         = os.environ.get("TRIVY_FAIL_SEVERITY", "HIGH,CRITICAL")
 PUSHGATEWAY_URL   = os.environ.get("PUSHGATEWAY_URL", "")
 BUILD_PHASE       = os.environ.get("BUILD_PHASE", "all")  # scan | build | sign | all
 # Per-package build timeout (seconds); 0 disables. Caps a hung makepkg so one
-# package can't consume the whole job's activeDeadlineSeconds.
+# package can't consume the whole job's activeDeadlineSeconds. Overridable per
+# package via `build_timeout:` in the allowlist (e.g. a slow from-source .NET
+# build) -- the largest value among the allowlist entries sharing a pkgbase wins.
 BUILD_TIMEOUT     = int(os.environ.get("BUILD_TIMEOUT", "7200"))
+# Keyserver used to fetch a recipe's validpgpkeys so makepkg can verify signed
+# source tarballs (e.g. libsepol, autofs). Build phase only.
+GPG_KEYSERVER     = os.environ.get("GPG_KEYSERVER", "hkps://keyserver.ubuntu.com")
 # scan phase only; mounted nowhere else so untrusted build code never sees it.
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 # Escalated review (substantive diffs / first-seen packages): stronger model, N
@@ -294,9 +300,45 @@ def git_head(repo: Path) -> str:
 
 AUR_GIT = "https://aur.archlinux.org"
 
+# name -> pkgbase cache. AUR git repos are keyed by PKGBASE, not pkgname, so a
+# split-package child (freeipa-client -> freeipa, darling-cli-git -> darling-git)
+# must be fetched/scanned/built from its pkgbase repo. Without this, git
+# ls-remote on <child>.git returns no HEAD and the package is silently held.
+_PKGBASE_CACHE: dict[str, str] = {}
+
+
+def aur_pkgbase(pkg: str) -> str:
+    """Resolve an AUR pkgname to its pkgbase via the RPC (cached).
+
+    Falls back to the name itself on any lookup failure (RPC down, package not
+    found, malformed response) so non-split packages and transient RPC blips
+    behave exactly as before.
+    """
+    if pkg in _PKGBASE_CACHE:
+        return _PKGBASE_CACHE[pkg]
+    base = pkg
+    try:
+        url = (f"{AUR_GIT}/rpc/v5/info?arg[]="
+               f"{urllib.parse.quote(pkg)}")
+        with urllib.request.urlopen(url, timeout=15) as resp:
+            data = json.load(resp)
+        if data.get("resultcount"):
+            base = data["results"][0].get("PackageBase") or pkg
+    except Exception as exc:  # noqa: BLE001 - fall back to the name
+        log.warning("pkgbase lookup failed for %s (using name): %s", pkg, str(exc)[:120])
+    _PKGBASE_CACHE[pkg] = base
+    return base
+
+
+def base_key(pkg: str, source: str | None) -> str:
+    """Work-dedup key: the pkgbase for AUR packages, the pkg name for
+    first-party (source) packages. All allowlist entries sharing this key are
+    produced by a single clone/scan/build of the same recipe."""
+    return pkg if source else aur_pkgbase(pkg)
+
 
 def _git_url(pkg: str, source: str | None) -> str:
-    return source if source else f"{AUR_GIT}/{pkg}.git"
+    return source if source else f"{AUR_GIT}/{aur_pkgbase(pkg)}.git"
 
 
 def remote_head(pkg: str, source: str | None) -> str:
@@ -480,20 +522,53 @@ def fetch_pkgbuild(pkg: str, source: str | None, pkg_dir: Path, commit: str) -> 
     """
     if source:
         run(["git", "clone", "--quiet", source, pkg], cwd=pkg_dir)
+        subdir = pkg_dir / pkg
     else:
-        run(["aur", "fetch", pkg], cwd=pkg_dir)
-    subdir = pkg_dir / pkg
+        # AUR git repos are named by pkgbase; `aur fetch` clones into a dir named
+        # after the pkgbase, which for a split child differs from the pkgname.
+        base = aur_pkgbase(pkg)
+        run(["aur", "fetch", base], cwd=pkg_dir)
+        subdir = pkg_dir / base
     # Check out the scanned commit. Detached checkout is fine -- we only read+build.
     run(["git", "checkout", "--quiet", commit], cwd=subdir)
     return subdir
 
 
-def build_fetched(pkg_subdir: Path) -> list[Path]:
+def import_validpgpkeys(pkg_subdir: Path) -> None:
+    """Import the recipe's validpgpkeys so makepkg can verify signed sources.
+
+    Reads key fingerprints from .SRCINFO (parsed, never executed) and fetches
+    their public halves from a keyserver into the build user's keyring.
+    Non-fatal: if a key can't be fetched, makepkg fails source verification and
+    the package is held -- same as before. makepkg still verifies the source
+    signature against these keys; we only make the public half available (the
+    standard flow for an 'unknown public key' recipe). The fingerprints come
+    from the Claude-scanned recipe, so this adds no trust beyond makepkg's model.
+    """
+    srcinfo = pkg_subdir / ".SRCINFO"
+    if not srcinfo.exists():
+        return
+    keys = [v.strip() for k, _, v in
+            (ln.partition("=") for ln in srcinfo.read_text(errors="replace").splitlines())
+            if k.strip() == "validpgpkeys" and v.strip()]
+    for key in keys:
+        try:
+            subprocess.run(["gpg", "--batch", "--keyserver", GPG_KEYSERVER,
+                            "--recv-keys", key], check=True, timeout=60,
+                           capture_output=True)
+            log.info("Imported validpgpkey %s", key)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            log.warning("Could not import validpgpkey %s (build may fail): %s",
+                        key, str(exc)[:120])
+
+
+def build_fetched(pkg_subdir: Path, timeout: int) -> list[Path]:
     """Build from an already-fetched PKGBUILD directory (per-package timeout)."""
+    import_validpgpkeys(pkg_subdir)
     run(
         ["makepkg", "-s", "--noconfirm", "--noprogressbar", "--needed"],
         cwd=pkg_subdir,
-        timeout=BUILD_TIMEOUT or None,
+        timeout=timeout or None,
     )
     return list(pkg_subdir.glob("*.pkg.tar.zst"))
 
@@ -754,6 +829,9 @@ def run_scan_phase() -> int:
     # already-scanned verdicts -- the scan resumes rather than restarting.
     state = {k: v for k, v in load_state().items() if k in approved_names}
     scanned = reused = held = 0
+    # First allowlist entry seen for each pkgbase owns the scan; its split
+    # siblings copy the verdict (same recipe) instead of re-cloning/re-scanning.
+    base_owner: dict[str, str] = {}
 
     with tempfile.TemporaryDirectory() as td:
         workdir = Path(td)
@@ -762,6 +840,17 @@ def run_scan_phase() -> int:
             source = entry.get("source")
             push_progress("scan", pkg, i + 1, len(approved))
             prev = state.get(pkg)
+
+            bkey = base_key(pkg, source)
+            owner = base_owner.get(bkey)
+            if owner is not None and owner in state:
+                # Split sibling of an already-scanned pkgbase: reuse its verdict.
+                st = dict(state[owner])
+                state[pkg] = st
+                reused += 1
+                held += 1 if st.get("verdict") == "fail" else 0
+                continue
+            base_owner[bkey] = pkg
 
             # 1. Resolve HEAD cheaply -- no clone.
             try:
@@ -872,6 +961,15 @@ def run_build_phase() -> int:
     failed: dict[str, dict] = {}  # pkg -> {reason, risk, summary}
     staged: dict[str, dict] = {}  # pkg -> {artifacts: [{name, sha256}], commit}
     skipped = 0
+    # One makepkg per pkgbase produces every split child, so only the first
+    # allowlist entry seen for a pkgbase builds; siblings are skipped. The
+    # per-package build timeout is the largest requested across the group.
+    handled_bases: set[str] = set()
+    base_timeouts: dict[str, int] = {}
+    for entry in packages:
+        bkey = base_key(entry["name"], entry.get("source"))
+        base_timeouts[bkey] = max(base_timeouts.get(bkey, 0),
+                                  int(entry.get("build_timeout") or BUILD_TIMEOUT))
 
     STAGING_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -898,6 +996,14 @@ def run_build_phase() -> int:
     for i, entry in enumerate(packages):
         pkg = entry["name"]
         source = entry.get("source")  # git URL for first-party (non-AUR) packages
+        bkey = base_key(pkg, source)
+        if bkey in handled_bases:
+            # A sibling of this pkgbase already built this run; makepkg emitted
+            # all split children then, so there is nothing left to do here.
+            log.info("-- %s: built with pkgbase %s this run, skipping --", pkg, bkey)
+            skipped += 1
+            continue
+        handled_bases.add(bkey)
         log.info("-- Processing: %s --", pkg)
         push_progress("build", pkg, i + 1, len(packages))
         pkg_dir = BUILD_DIR / pkg
@@ -952,11 +1058,12 @@ def run_build_phase() -> int:
                 bump_pkgrel_for_python(pkg_subdir, pkg, py_now)
 
             # 3. Build (per-package timeout so one hang can't eat the job deadline)
+            tmo = base_timeouts.get(bkey, BUILD_TIMEOUT)
             try:
-                artifacts = build_fetched(pkg_subdir)
+                artifacts = build_fetched(pkg_subdir, tmo)
             except subprocess.TimeoutExpired:
-                log.error("Build TIMED OUT for %s (>%ss)", pkg, BUILD_TIMEOUT)
-                failed[pkg] = _hold("build_timeout", f"build exceeded {BUILD_TIMEOUT}s")
+                log.error("Build TIMED OUT for %s (>%ss)", pkg, tmo)
+                failed[pkg] = _hold("build_timeout", f"build exceeded {tmo}s")
                 continue
             except subprocess.CalledProcessError:
                 log.error("Build FAILED for %s", pkg)

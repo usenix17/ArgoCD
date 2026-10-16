@@ -559,9 +559,6 @@ data:
       - name: kpatch
         approved: true
         note: explicit
-      - name: rackpeek
-        approved: true
-        note: explicit
         build_timeout: 14400  # builds .NET from source; exceeds the 2h default
       - name: authselect
         approved: true

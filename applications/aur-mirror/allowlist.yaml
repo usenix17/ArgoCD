@@ -44,8 +44,11 @@ data:
         note: explicit
       - name: claude-code
         approved: true
-        note: explicit -- first-party recipe; pinned version + reviewed Anthropic checksums (bump via commit)
+        note: explicit -- first-party recipe; tracks Anthropic's latest release, verified against their signed manifest
         source: https://github.com/usenix17/claude-code.git
+        # The recipe resolves the version itself, so its commit never moves when
+        # Anthropic ships: rebuild every run (an unchanged version is not republished).
+        track: latest
       - name: claude-desktop-native
         approved: false
         note: explicit [held 2026-06-26 -- Claude flagged high/critical]

@@ -14,8 +14,10 @@ summary files at the end of every run.
 import logging
 import shutil
 import subprocess
+import re
 import tarfile
 import time
+import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -126,12 +128,39 @@ def vercmp(left: str, right: str) -> int:
         return (left > right) - (left < right)
 
 
+_GITHUB = re.compile(r"^https://github\.com/([^/]+/[^/]+?)(?:\.git)?/?$")
+
+
+def recipe_url(entry: dict, pkgbase: str, commit: str | None) -> str | None:
+    """Web link to a recipe's PKGBUILD, at ``commit`` when known.
+
+    AUR recipes link to the AUR's cgit view of the pkgbase; first-party
+    recipes link to GitHub. Other git hosts get no link.
+    """
+    source = entry.get("source")
+    if source:
+        match = _GITHUB.match(source)
+        if not match:
+            return None
+        return f"https://github.com/{match.group(1)}/blob/{commit or 'HEAD'}/PKGBUILD"
+    query = urllib.parse.urlencode({"h": pkgbase, **({"id": commit} if commit else {})})
+    return f"https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?{query}"
+
+
+@dataclass
+class RepoView:
+    """The published repo: parsed database plus the commit each package was built from."""
+
+    db: dict[str, dict]
+    built: dict[str, str] = field(default_factory=dict)
+
+
 @dataclass
 class StatusInputs:
     """Everything the sign phase knows at the end of a run."""
 
     approved: list[dict]
-    db: dict[str, dict]
+    repo: RepoView
     meta: dict[str, dict]
     state: dict[str, dict]
     events: dict[str, dict]
@@ -156,6 +185,17 @@ def hold_of(event: dict) -> dict | None:
     return {k: event.get(k, "") for k in ("reason", "risk", "summary")}
 
 
+def _row_commit(name: str, scan: dict, hold: dict | None, repo: RepoView) -> str | None:
+    """Commit a row's PKGBUILD link points at.
+
+    Held: the commit that was reviewed or failed. Otherwise what is published;
+    split siblings fall back to the scan commit they share with their owner.
+    """
+    if hold:
+        return scan.get("commit") or None
+    return repo.built.get(name) or scan.get("commit") or None
+
+
 def _streak(prev: dict, held: bool, now: int) -> tuple[int, int | None]:
     if not held:
         return 0, None
@@ -166,7 +206,7 @@ def package_entry(entry: dict, inp: StatusInputs) -> dict:
     """One package's row for packages.json."""
     name = entry["name"]
     prev = inp.prev.get(name, {})
-    pub = inp.db.get(name, {})
+    pub = inp.repo.db.get(name, {})
     meta = inp.meta.get(name, {})
     scan = inp.state.get(name, {})
     event = inp.events.get(name, {})
@@ -178,9 +218,11 @@ def package_entry(entry: dict, inp: StatusInputs) -> dict:
         last_build.update(ts=inp.now, run=cfg.RUN_ID)
     upstream = meta.get("version", "")
     version = pub.get("version", "")
+    pkgbase = meta.get("pkgbase") or pub.get("base") or name
     return {
         "name": name,
-        "pkgbase": meta.get("pkgbase") or pub.get("base") or name,
+        "pkgbase": pkgbase,
+        "pkgbuild_url": recipe_url(entry, pkgbase, _row_commit(name, scan, hold, inp.repo)),
         "first_party": bool(entry.get("source")),
         "description": meta.get("description") or pub.get("desc", ""),
         "url": meta.get("url", ""),

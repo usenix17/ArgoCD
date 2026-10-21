@@ -201,6 +201,8 @@ main { padding-top: 20px; padding-bottom: 8px; display: grid; gap: 16px; }
 .behind { display: block; color: var(--warn); font-size: .8rem; }
 
 .log { white-space: nowrap; font-size: .85rem; }
+.links { white-space: nowrap; }
+.links a + a { margin-left: 12px; }
 .empty { color: var(--muted); margin: 8px 0 0; font-size: .9rem; }
 
 /* Controls */

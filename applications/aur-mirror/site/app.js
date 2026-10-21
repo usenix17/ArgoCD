@@ -86,6 +86,19 @@ function logLink(url, label) {
   return href ? el("a", { class: "log", href, target: "_blank", rel: "noopener", text: label || "log" }) : "";
 }
 
+function links(pkg, log) {
+  // PKGBUILD (AUR cgit or GitHub) then the build/scan log, in one cell.
+  const href = safeHref(pkg && pkg.pkgbuild_url);
+  const recipe = href ? el("a", { class: "log", href, target: "_blank", rel: "noopener noreferrer",
+                                  title: "Recipe at the commit shown on this row", text: "PKGBUILD" }) : "";
+  return el("td", { class: "links" }, recipe, logLink(log));
+}
+
+function pkgByName(name) {
+  const pkgs = (state.packages && state.packages.packages) || [];
+  return pkgs.find((p) => p.name === name);
+}
+
 function when(ts) { return el("span", { class: "when", title: stamp(ts), text: ago(ts) }); }
 
 async function fetchJSON(path) {
@@ -175,7 +188,7 @@ function renderHeld() {
     el("td", {}, when(p.failing_since)),
     el("td", { class: "num", text: p.streak ? `×${p.streak}` : "" }),
     el("td", { class: "detail", title: (p.hold && p.hold.summary) || "", text: (p.hold && p.hold.summary) || "" }),
-    el("td", {}, logLink(p.log)),
+    links(p, p.log),
   ));
   fill($("held-table").tBodies[0], rows, "held-empty");
 }
@@ -199,7 +212,7 @@ function renderBuilds() {
       el("td", { class: "mono", text: ev.version || "" }),
       el("td", { class: "num", text: dur(ev.duration) }),
       el("td", {}, when(ev.ts)),
-      el("td", {}, logLink(ev.log)),
+      links(pkgByName(ev.name), ev.log),
     );
   });
   fill($("builds-table").tBodies[0], trs, "builds-empty");
@@ -248,7 +261,7 @@ function renderPackages() {
       p.behind ? el("span", { class: "behind", text: `upstream ${p.upstream_version}` }) : "");
     return el("tr", {}, name, ver, el("td", {}, statusCell(p)),
       el("td", {}, p.builddate ? when(p.builddate) : el("span", { class: "when", text: "—" })),
-      el("td", {}, logLink(p.log)));
+      links(p, p.log));
   });
   fill($("pkg-table").tBodies[0], rows, "pkg-empty");
   $("pkg-count").textContent = `${list.length} of ${all.length} shown`;

@@ -34,11 +34,35 @@ def test_read_repo_db_corrupt_is_empty(tmp_path):
 
 
 def _inputs(**kw):
-    base = {"approved": [{"name": "x"}], "db": {"x": {"version": "1.0-1"}},
-            "meta": {"x": {"version": "1.1-1", "pkgbase": "xb"}}, "state": {}, "events": {},
-            "now": 1000}
+    base = {"approved": [{"name": "x"}],
+            "repo": status.RepoView(db={"x": {"version": "1.0-1"}}, built={"x": "c-built"}),
+            "meta": {"x": {"version": "1.1-1", "pkgbase": "xb"}},
+            "state": {"x": {"commit": "c-scanned"}}, "events": {}, "now": 1000}
     base.update(kw)
     return status.StatusInputs(**base)
+
+
+def test_recipe_url_aur_and_github():
+    """AUR links use the pkgbase and commit; GitHub sources link the blob."""
+    aur = status.recipe_url({"name": "freeipa-client"}, "freeipa", "abc")
+    assert aur == "https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=freeipa&id=abc"
+    assert status.recipe_url({"name": "x"}, "x", None).endswith("PKGBUILD?h=x")
+    gh = status.recipe_url({"name": "pac", "source": "https://github.com/usenix17/pac.git"},
+                           "pac", "def")
+    assert gh == "https://github.com/usenix17/pac/blob/def/PKGBUILD"
+    assert status.recipe_url({"name": "y", "source": "https://gitea.example/y.git"},
+                             "y", "z") is None
+
+
+def test_pkgbuild_links_published_or_rejected_commit(dirs):  # pylint: disable=unused-argument
+    """Healthy rows link the built commit; held rows link what was rejected."""
+    row = status.package_entry({"name": "x"}, _inputs())
+    assert row["pkgbuild_url"].endswith("h=xb&id=c-built")
+    held = {"x": {"result": "held", "reason": "scan", "summary": "bad"}}
+    row = status.package_entry({"name": "x"}, _inputs(events=held))
+    assert row["pkgbuild_url"].endswith("h=xb&id=c-scanned")
+    sibling = _inputs(repo=status.RepoView(db={"x": {"version": "1.0-1"}}))
+    assert status.package_entry({"name": "x"}, sibling)["pkgbuild_url"].endswith("id=c-scanned")
 
 
 def test_package_entry_ok_and_behind(dirs):  # pylint: disable=unused-argument

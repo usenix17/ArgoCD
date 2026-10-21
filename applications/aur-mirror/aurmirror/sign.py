@@ -16,8 +16,8 @@ from .aur import load_meta
 from .common import artifact_parts, hold, read_json, run, sha256_file, write_json
 from .metrics import push_metrics, push_progress
 from .scan import load_state
-from .status import (StatusInputs, build_packages_doc, cleanup_logs, read_repo_db,
-                     update_runs, vercmp, write_text)
+from .status import (RepoView, StatusInputs, build_packages_doc, cleanup_logs,
+                     read_repo_db, update_runs, vercmp, write_text)
 
 log = logging.getLogger("aurmirror")
 
@@ -179,7 +179,9 @@ def write_status(manifest: dict, events: dict) -> None:
             events[pkg]["log"] = url
     run_doc = run_document(manifest, events, run_state, now)
     prev_doc = read_json(cfg.STATUS_DIR / "packages.json", {})
-    inputs = StatusInputs(approved=entries, db=read_repo_db(_db()), meta=load_meta(entries),
+    repo = RepoView(db=read_repo_db(_db()),
+                    built=read_json(cfg.repo_file("built-commits.json"), {}))
+    inputs = StatusInputs(approved=entries, repo=repo, meta=load_meta(entries),
                           state=load_state(), events=events,
                           prev={p["name"]: p for p in prev_doc.get("packages", [])}, now=now)
     try:

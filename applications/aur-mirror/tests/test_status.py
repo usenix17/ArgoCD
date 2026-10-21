@@ -71,6 +71,17 @@ def test_package_entry_ok_and_behind(dirs):  # pylint: disable=unused-argument
     assert row["status"] == "ok" and row["behind"] and row["pkgbase"] == "xb"
 
 
+def test_aur_flag_date_and_count(dirs):  # pylint: disable=unused-argument
+    """The AUR out-of-date flag carries its date and is counted."""
+    meta = {"x": {"version": "1.0-1", "out_of_date": 1792000000}}
+    inp = _inputs(meta=meta)
+    row = status.package_entry({"name": "x"}, inp)
+    assert row["out_of_date"] and row["flagged_since"] == 1792000000
+    assert status.build_packages_doc(inp, {})["counts"]["flagged"] == 1
+    legacy = status.package_entry({"name": "x"}, _inputs(meta={"x": {"out_of_date": True}}))
+    assert legacy["out_of_date"] and legacy["flagged_since"] is None
+
+
 def test_package_entry_streak(dirs):  # pylint: disable=unused-argument
     """Consecutive held runs count up and keep the first failure time."""
     held = {"x": {"result": "failed", "reason": "build_error", "summary": "boom"}}

@@ -185,6 +185,11 @@ def hold_of(event: dict) -> dict | None:
     return {k: event.get(k, "") for k in ("reason", "risk", "summary")}
 
 
+def _flag_time(value) -> int | None:
+    """AUR out-of-date flag time (epoch seconds), or None."""
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
+
+
 def _row_commit(name: str, scan: dict, hold: dict | None, repo: RepoView) -> str | None:
     """Commit a row's PKGBUILD link points at.
 
@@ -231,6 +236,8 @@ def package_entry(entry: dict, inp: StatusInputs) -> dict:
         "upstream_version": upstream,
         "behind": bool(version and upstream and vercmp(version, upstream) < 0),
         "out_of_date": bool(meta.get("out_of_date")),
+        # Older meta.json files stored a bare True: no date to show for those.
+        "flagged_since": _flag_time(meta.get("out_of_date")),
         "builddate": pub.get("builddate") or None,
         "size": pub.get("size") or None,
         "status": "held" if hold else ("ok" if pub else "pending"),
@@ -257,6 +264,7 @@ def build_packages_doc(inp: StatusInputs, run: dict) -> dict:
             "held": sum(r["status"] == "held" for r in rows),
             "pending": sum(r["status"] == "pending" for r in rows),
             "behind": sum(r["behind"] for r in rows),
+            "flagged": sum(r["out_of_date"] for r in rows),
         },
         "packages": rows,
     }

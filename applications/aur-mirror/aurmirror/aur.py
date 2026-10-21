@@ -38,7 +38,8 @@ def fetch_info(names: list[str]) -> dict[str, dict]:
                 "version": res.get("Version", ""),
                 "description": res.get("Description") or "",
                 "url": res.get("URL") or "",
-                "out_of_date": bool(res.get("OutOfDate")),
+                # Epoch seconds when an AUR user flagged it out of date, else None.
+                "out_of_date": res.get("OutOfDate") or None,
                 "last_modified": res.get("LastModified") or 0,
             }
     return out

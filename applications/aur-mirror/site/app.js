@@ -166,6 +166,7 @@ function renderTiles() {
     tile(c.ok, "published", "ok", "all"),
     tile(c.held, "held", c.held ? "bad" : "", "held"),
     tile(c.behind, "behind upstream", c.behind ? "warn" : "", "behind"),
+    tile(c.flagged, "flagged on AUR", c.flagged ? "warn" : "", "flagged"),
   );
 }
 
@@ -222,6 +223,19 @@ function renderBuilds() {
 
 const STATUS_ORDER = { held: 0, pending: 1, ok: 2 };
 
+function flagBadge(p) {
+  // An AUR user reported the recipe lags the project; the AUR page has the reason.
+  if (!p.out_of_date) return "";
+  const since = p.flagged_since ? ` ${ago(p.flagged_since).replace(" ago", "")}` : "";
+  return el("a", {
+    class: "badge warn flag", target: "_blank", rel: "noopener noreferrer",
+    href: `https://aur.archlinux.org/packages/${encodeURIComponent(p.name)}`,
+    title: p.flagged_since ? `Flagged out of date on the AUR since ${stamp(p.flagged_since)}`
+                           : "Flagged out of date on the AUR",
+    text: `flagged on AUR${since}`,
+  });
+}
+
 function statusCell(p) {
   if (p.status === "held") return reasonBadge(p.hold);
   if (p.status === "pending") return badge("not built yet", "info");
@@ -231,6 +245,7 @@ function statusCell(p) {
 function matches(p) {
   if (state.filter === "held" && p.status !== "held") return false;
   if (state.filter === "behind" && !p.behind) return false;
+  if (state.filter === "flagged" && !p.out_of_date) return false;
   if (state.filter === "first" && !p.first_party) return false;
   if (!state.query) return true;
   const hay = `${p.name} ${p.pkgbase} ${p.description}`.toLowerCase();
@@ -258,7 +273,8 @@ function renderPackages() {
       el("span", { class: "desc", title: p.description || "", text: p.description || "" }));
     const ver = el("td", {},
       el("span", { class: "mono", text: p.version || "—" }),
-      p.behind ? el("span", { class: "behind", text: `upstream ${p.upstream_version}` }) : "");
+      p.behind ? el("span", { class: "behind", text: `upstream ${p.upstream_version}` }) : "",
+      flagBadge(p));
     return el("tr", {}, name, ver, el("td", {}, statusCell(p)),
       el("td", {}, p.builddate ? when(p.builddate) : el("span", { class: "when", text: "—" })),
       links(p, p.log));

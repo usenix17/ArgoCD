@@ -85,7 +85,7 @@ spec:
             # mounts neither the repo nor the GPG key. Always exits 0 (per-package
             # scan failures become fail-closed verdicts) so it can't block build.
             - name: scan
-              image: registry.starnix.net/library/aur-builder@sha256:ec9490540b3ab620bc7f507d5b315276b8493a1ad10b8c6701edad91af09007b
+              image: registry.starnix.net/library/aur-builder@sha256:6d5da866d1774b7d74f25e29e7bd7b51a7d042486ffc4ac708e6ee5af2243767
               command:
                 - flock
                 - /lock/.build.lock
@@ -140,7 +140,7 @@ spec:
             # exfiltrate neither. Vetted artifacts are staged on build-dir for the
             # sign phase. Runs after scan so verdicts exist before it builds.
             - name: build
-              image: registry.starnix.net/library/aur-builder@sha256:ec9490540b3ab620bc7f507d5b315276b8493a1ad10b8c6701edad91af09007b
+              image: registry.starnix.net/library/aur-builder@sha256:6d5da866d1774b7d74f25e29e7bd7b51a7d042486ffc4ac708e6ee5af2243767
               # flock serializes against the PostSync on-add job (builder-hook)
               # so a nightly run and an on-add run never build concurrently.
               command:
@@ -203,7 +203,7 @@ spec:
             # the signer (below) mounts. Runs after the build init container, so
             # the key is never present while untrusted build code is executing.
             - name: gpg-init
-              image: registry.starnix.net/library/aur-builder@sha256:ec9490540b3ab620bc7f507d5b315276b8493a1ad10b8c6701edad91af09007b
+              image: registry.starnix.net/library/aur-builder@sha256:6d5da866d1774b7d74f25e29e7bd7b51a7d042486ffc4ac708e6ee5af2243767
               command:
                 - sh
                 - -c
@@ -236,7 +236,7 @@ spec:
             # repo-adds them, prunes, and pushes metrics. This is the only
             # container that holds the key, and it never runs PKGBUILD code.
             - name: signer
-              image: registry.starnix.net/library/aur-builder@sha256:ec9490540b3ab620bc7f507d5b315276b8493a1ad10b8c6701edad91af09007b
+              image: registry.starnix.net/library/aur-builder@sha256:6d5da866d1774b7d74f25e29e7bd7b51a7d042486ffc4ac708e6ee5af2243767
               command:
                 - flock
                 - /lock/.build.lock

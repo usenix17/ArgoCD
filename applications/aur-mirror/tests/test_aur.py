@@ -14,8 +14,8 @@ def _fake_urlopen(calls, fail=False):
         if fail:
             raise urllib.error.URLError("down")
         names = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["arg[]"]
-        results = [{"Name": n, "PackageBase": n.split("-client")[0], "Version": "1-1"}
-                   for n in names]
+        results = [{"Name": n, "PackageBase": n.split("-client")[0], "Version": "1-1",
+                    "OutOfDate": 1792000000 if n == "flagged" else None} for n in names]
         return io.BytesIO(json.dumps({"results": results}).encode())
     return opener
 
@@ -35,6 +35,14 @@ def test_split_child_resolves_to_pkgbase(monkeypatch):
     assert aur.pkgbase("freeipa-client", None, meta) == "freeipa"
     assert aur.git_url("freeipa-client", None, meta).endswith("/freeipa.git")
     assert aur.git_url("pac", "https://g/pac.git", meta) == "https://g/pac.git"
+
+
+def test_flag_time_kept(monkeypatch):
+    """The AUR out-of-date flag keeps its timestamp; unflagged is None."""
+    monkeypatch.setattr(aur.urllib.request, "urlopen", _fake_urlopen([]))
+    meta = aur.fetch_info(["flagged", "fine"])
+    assert meta["flagged"]["out_of_date"] == 1792000000
+    assert meta["fine"]["out_of_date"] is None
 
 
 # pylint: disable-next=unused-argument

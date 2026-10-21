@@ -458,9 +458,6 @@ data:
       - name: slack-desktop
         approved: true
         note: explicit
-      - name: sqlitestudio
-        approved: true
-        note: explicit
       - name: sublime-text-4
         approved: true
         note: explicit
@@ -602,6 +599,3 @@ data:
       - name: yp-tools
         approved: true
         note: dependency
-      - name: hubble-bin
-        approved: true
-        note: explicit

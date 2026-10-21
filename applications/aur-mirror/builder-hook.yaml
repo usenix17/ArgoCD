@@ -63,6 +63,11 @@ spec:
           # the build phase can mount /repo read-only.
           persistentVolumeClaim:
             claimName: aur-mirror-lock-pvc
+        # Public status files for the mirror website (live.json, logs,
+        # packages.json). Untrusted: served only as JSON or plain text.
+        - name: status
+          persistentVolumeClaim:
+            claimName: aur-mirror-status-pvc
       initContainers:
         # Phase 1: scan. Resolve each package's AUR HEAD and Claude-scan it,
         # writing verdicts to the state PV. ONLY container with ANTHROPIC_API_KEY;
@@ -80,6 +85,8 @@ spec:
           env:
             - name: BUILD_PHASE
               value: scan
+            - name: STATUS_DIR
+              value: /status
             - name: REPO_DIR
               value: /repo
             - name: STATE_DIR
@@ -102,6 +109,8 @@ spec:
               mountPath: /state
             - name: lock
               mountPath: /lock
+            - name: status
+              mountPath: /status
           resources:
             requests:
               cpu: 250m
@@ -124,6 +133,8 @@ spec:
           env:
             - name: BUILD_PHASE
               value: build
+            - name: STATUS_DIR
+              value: /status
             - name: REPO_DIR
               value: /repo
             - name: BUILD_DIR
@@ -155,6 +166,8 @@ spec:
               mountPath: /config
             - name: build-dir
               mountPath: /build
+            - name: status
+              mountPath: /status
           resources:
             requests:
               cpu: 2
@@ -164,7 +177,7 @@ spec:
               cpu: 4
               memory: 12Gi
               ephemeral-storage: 50Gi
-        # Phase 2 prep: import the GPG key into gpg-home (only the signer mounts
+        # Phase 3 prep: import the GPG key into gpg-home (only the signer mounts
         # it), after the untrusted build init container has finished.
         - name: gpg-init
           image: registry.starnix.net/library/aur-builder@sha256:27553b81e3c5163979cb0291338106323f9a169feb7159a76c89e6fbf6b6085a
@@ -193,7 +206,7 @@ spec:
             - name: gpg-home
               mountPath: /gpg
       containers:
-        # Phase 2: sign + publish. Only container holding the key; runs no
+        # Phase 3: sign + publish. Only container holding the key; runs no
         # PKGBUILD code. Reads staged artifacts, signs, repo-adds, pushes metrics.
         - name: signer
           image: registry.starnix.net/library/aur-builder@sha256:27553b81e3c5163979cb0291338106323f9a169feb7159a76c89e6fbf6b6085a
@@ -204,6 +217,10 @@ spec:
           env:
             - name: BUILD_PHASE
               value: sign
+            - name: STATUS_DIR
+              value: /status
+            - name: STATE_DIR
+              value: /state
             - name: GNUPGHOME
               value: /gpg/gnupg
             - name: GPG_KEY_ID
@@ -229,6 +246,12 @@ spec:
               mountPath: /gpg
             - name: build-dir
               mountPath: /build
+            - name: status
+              mountPath: /status
+            # Verdicts + AUR metadata for the status page; read-only.
+            - name: state
+              mountPath: /state
+              readOnly: true
           # The signer never runs PKGBUILD code or sudo, so it can be locked
           # down hard: no privilege escalation, no Linux capabilities.
           securityContext:

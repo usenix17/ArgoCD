@@ -72,6 +72,11 @@ spec:
               # the published repo so the build phase can mount /repo read-only.
               persistentVolumeClaim:
                 claimName: aur-mirror-lock-pvc
+            # Public status files for the mirror website (live.json, logs,
+            # packages.json). Untrusted: served only as JSON or plain text.
+            - name: status
+              persistentVolumeClaim:
+                claimName: aur-mirror-status-pvc
           initContainers:
             # Phase 1: scan. Resolve each package's AUR HEAD and run the Claude
             # PKGBUILD scan, writing pass/fail verdicts to the state PV. This is
@@ -92,6 +97,8 @@ spec:
               env:
                 - name: BUILD_PHASE
                   value: scan
+                - name: STATUS_DIR
+                  value: /status
                 # REPO_DIR is read at module import; scan never touches /repo
                 # (not mounted here), it only writes the state PV.
                 - name: REPO_DIR
@@ -118,6 +125,8 @@ spec:
                   mountPath: /state
                 - name: lock
                   mountPath: /lock
+                - name: status
+                  mountPath: /status
               resources:
                 requests:
                   cpu: 250m
@@ -141,6 +150,8 @@ spec:
               env:
                 - name: BUILD_PHASE
                   value: build
+                - name: STATUS_DIR
+                  value: /status
                 - name: REPO_DIR
                   value: /repo
                 - name: BUILD_DIR
@@ -174,6 +185,8 @@ spec:
                   mountPath: /config
                 - name: build-dir
                   mountPath: /build
+                - name: status
+                  mountPath: /status
               resources:
                 requests:
                   cpu: 2
@@ -186,7 +199,7 @@ spec:
                   # memory, not build-tree storage.
                   memory: 12Gi
                   ephemeral-storage: 50Gi
-            # Phase 2 prep: import the GPG signing key into gpg-home, which only
+            # Phase 3 prep: import the GPG signing key into gpg-home, which only
             # the signer (below) mounts. Runs after the build init container, so
             # the key is never present while untrusted build code is executing.
             - name: gpg-init
@@ -219,7 +232,7 @@ spec:
                 - name: gpg-home
                   mountPath: /gpg
           containers:
-            # Phase 2: sign + publish. Reads the staged artifacts, GPG-signs and
+            # Phase 3: sign + publish. Reads the staged artifacts, GPG-signs and
             # repo-adds them, prunes, and pushes metrics. This is the only
             # container that holds the key, and it never runs PKGBUILD code.
             - name: signer
@@ -231,6 +244,10 @@ spec:
               env:
                 - name: BUILD_PHASE
                   value: sign
+                - name: STATUS_DIR
+                  value: /status
+                - name: STATE_DIR
+                  value: /state
                 - name: GNUPGHOME
                   value: /gpg/gnupg
                 - name: GPG_KEY_ID
@@ -256,6 +273,12 @@ spec:
                   mountPath: /gpg
                 - name: build-dir
                   mountPath: /build
+                - name: status
+                  mountPath: /status
+                # Verdicts + AUR metadata for the status page; read-only.
+                - name: state
+                  mountPath: /state
+                  readOnly: true
               # The signer never runs PKGBUILD code or sudo, so it can be locked
               # down hard: no privilege escalation, no Linux capabilities.
               securityContext:

@@ -103,3 +103,42 @@ spec:
   resources:
     requests:
       storage: 1Gi
+
+---
+# Status volume: public files for the mirror website (https://aur.starnix.net),
+# served read-only by the repo-server under /status/. Holds live.json (updated
+# by every phase), per-package scan/build logs under logs/<run>/ (kept 30 days),
+# and packages.json / runs.json (written by the signer at the end of a run).
+# The build container runs untrusted PKGBUILD code and can write here, so the
+# site treats every file as data: JSON/plain text only, rendered as text.
+# Create the directory first:
+#   mkdir -p /mnt/Store/aur-mirror/status && chown 1000:1000 /mnt/Store/aur-mirror/status
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: aur-mirror-status-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  nfs:
+    server: 192.168.1.75
+    path: /mnt/Store/aur-mirror/status
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: aur-mirror-status-pvc
+  namespace: aur-mirror
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: manual
+  volumeName: aur-mirror-status-pv
+  resources:
+    requests:
+      storage: 5Gi

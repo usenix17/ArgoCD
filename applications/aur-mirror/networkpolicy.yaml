@@ -1,18 +1,17 @@
 # Egress lockdown for the AUR builder.
 #
-# The build phase runs untrusted PKGBUILD code. This policy (now ENFORCED, since
-# the cluster moved from Flannel to Cilium) limits the blast radius of a build
-# that slips past the commit-pin review + Trivy: it may reach the public
-# internet (needed to fetch sources, pacman/AUR, vendor binaries, the Trivy DB)
-# and nothing internal -- no Kubernetes API, no other namespaces/pods/services,
-# no LAN hosts, no Tailscale net.
+# The build phase runs untrusted PKGBUILD code. This policy (enforced by
+# Cilium) limits the blast radius of a build that slips past the Claude recipe
+# review + Trivy: it may reach the public internet (sources, pacman/AUR,
+# keyservers, vendor binaries, the Trivy DB) and nothing internal -- no
+# Kubernetes API, no other namespaces/pods/services, no LAN hosts, no Tailscale.
 #
 # Residual risk (documented, not yet closed): public egress is still broad
-# enough that a build whose *pinned, reviewed* recipe pulls a later-compromised
+# enough that a build whose *reviewed* recipe pulls a later-compromised
 # upstream source tarball could fetch a second stage. Closing it fully needs a
 # two-step build (network-enabled source fetch with checksum verify, then a
 # network-denied build) or a source-host allowlist -- both higher-maintenance,
-# so deferred. The commit pin + Claude review at lock time is the primary gate.
+# so deferred. The per-commit Claude review is the primary gate.
 #
 # Selects the builder pods by the app=aur-builder label set on both the nightly
 # CronJob (builder.yaml) and the PostSync hook Job (builder-hook.yaml).
@@ -75,3 +74,30 @@ spec:
               - 192.168.0.0/16
               - 169.254.0.0/16
               - 100.64.0.0/10
+
+---
+# The repo-server only answers HTTP from Traefik (which also fronts the
+# Cloudflare tunnel) and never initiates connections: nginx reads mounted
+# volumes only. Kubelet probes come from the node and are allowed by Cilium's
+# default allow-localhost behaviour.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aur-repo-server
+  namespace: aur-mirror
+spec:
+  podSelector:
+    matchLabels:
+      app: aur-repo-server
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress: []

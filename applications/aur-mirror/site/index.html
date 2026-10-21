@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>starnix AUR mirror</title>
+  <meta name="description" content="Build status for the starnix AUR mirror: every package is Claude-reviewed, built, Trivy-scanned and GPG-signed.">
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/app.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap top-inner">
+      <div class="brand">
+        <img src="/assets/favicon.svg" alt="" width="28" height="28">
+        <div>
+          <h1>starnix AUR mirror</h1>
+          <p class="sub">Every package is Claude-reviewed, built, Trivy-scanned and signed.</p>
+        </div>
+      </div>
+      <nav class="nav" aria-label="Sections">
+        <a href="#held">Held</a>
+        <a href="#builds">Recent builds</a>
+        <a href="#packages">Packages</a>
+        <a href="#use">Use this repo</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="card live" id="live" aria-live="polite">
+      <div class="live-head">
+        <span class="dot" id="live-dot"></span>
+        <h2 id="live-title">Loading status…</h2>
+        <span class="muted" id="live-meta"></span>
+      </div>
+      <ol class="steps" id="live-steps" aria-label="Pipeline phases">
+        <li data-phase="scan"><b>Scan</b><span>Claude recipe review</span></li>
+        <li data-phase="build"><b>Build</b><span>makepkg + Trivy</span></li>
+        <li data-phase="sign"><b>Sign</b><span>GPG + publish</span></li>
+      </ol>
+      <div class="progress" id="live-progress" hidden>
+        <div class="bar"><div class="fill" id="live-fill"></div></div>
+        <span class="muted" id="live-count"></span>
+      </div>
+    </section>
+
+    <section class="tiles" id="tiles" aria-label="Summary"></section>
+
+    <section class="card" id="held">
+      <div class="card-head">
+        <h2>Held packages</h2>
+        <p class="muted">Packages the pipeline is not publishing right now. A held package keeps serving its last good build.</p>
+      </div>
+      <div class="table-scroll">
+        <table class="grid" id="held-table">
+          <thead><tr><th>Package</th><th>Reason</th><th>Failing since</th><th>Runs</th><th>Detail</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="empty" id="held-empty" hidden>Nothing is held. Every allowlisted package is building cleanly.</p>
+    </section>
+
+    <section class="card" id="builds">
+      <div class="card-head">
+        <h2>Recent builds</h2>
+        <p class="muted">Builds and reviews from the last 30 days, newest first.</p>
+      </div>
+      <div class="table-scroll">
+        <table class="grid" id="builds-table">
+          <thead><tr><th>Package</th><th>Result</th><th>Version</th><th>Took</th><th>When</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="empty" id="builds-empty" hidden>No builds in the last 30 days.</p>
+    </section>
+
+    <section class="card" id="packages">
+      <div class="card-head row">
+        <div>
+          <h2>Packages</h2>
+          <p class="muted" id="pkg-count"></p>
+        </div>
+        <div class="controls">
+          <input type="search" id="search" placeholder="Search packages" aria-label="Search packages">
+          <div class="chips" role="group" aria-label="Filter">
+            <button type="button" class="chip on" data-filter="all">All</button>
+            <button type="button" class="chip" data-filter="held">Held</button>
+            <button type="button" class="chip" data-filter="behind">Behind upstream</button>
+            <button type="button" class="chip" data-filter="first">First-party</button>
+          </div>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table class="grid sortable" id="pkg-table">
+          <thead>
+            <tr>
+              <th><button type="button" data-sort="name">Package</button></th>
+              <th><button type="button" data-sort="version">Version</button></th>
+              <th><button type="button" data-sort="status">Status</button></th>
+              <th><button type="button" data-sort="builddate">Built</button></th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="empty" id="pkg-empty" hidden>No packages match.</p>
+    </section>
+
+    <section class="card" id="runs">
+      <div class="card-head">
+        <h2>Run history</h2>
+        <p class="muted">Nightly at 02:00 UTC, plus a run whenever the allowlist changes.</p>
+      </div>
+      <div class="table-scroll">
+        <table class="grid" id="runs-table">
+          <thead><tr><th>Started</th><th>Took</th><th>Reviewed</th><th>Published</th><th>Failed</th><th>Held</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card" id="use">
+      <div class="card-head">
+        <h2>Use this repo</h2>
+        <p class="muted">Add the signing key, then the repository, to any Arch machine.</p>
+      </div>
+      <div class="use-grid">
+        <div>
+          <div class="snippet-head">
+            <h3>1. Trust the signing key</h3>
+            <button type="button" class="copy" data-copy="key-snippet">Copy</button>
+          </div>
+          <pre class="code" id="key-snippet"></pre>
+        </div>
+        <div>
+          <div class="snippet-head">
+            <h3>2. Add to /etc/pacman.conf</h3>
+            <button type="button" class="copy" data-copy="conf-snippet">Copy</button>
+          </div>
+          <pre class="code" id="conf-snippet"></pre>
+        </div>
+      </div>
+      <p class="muted small">Raw data: <a href="/status/packages.json">packages.json</a> · <a href="/status/runs.json">runs.json</a> · <a href="/status/live.json">live.json</a> · <a href="/browse/">browse files</a></p>
+    </section>
+  </main>
+
+  <footer class="wrap foot muted small">
+    <span id="updated"></span>
+  </footer>
+</body>
+</html>

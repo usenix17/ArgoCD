@@ -44,7 +44,7 @@ GPG_KEYSERVERS = [s.strip() for s in os.environ.get(
 # Scan phase only: never mounted where PKGBUILD code runs.
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 SCAN_MODEL = os.environ.get("SCAN_MODEL", "claude-haiku-5-5")
-ESCALATION_MODEL = os.environ.get("ESCALATION_MODEL", "claude-sonnet-5")
+ESCALATION_MODEL = os.environ.get("ESCALATION_MODEL", "claude-sonnet-5-5")
 ESCALATION_PASSES = int(os.environ.get("ESCALATION_PASSES", "2"))
 
 # Status files and build logs older than this are trimmed by the sign phase.

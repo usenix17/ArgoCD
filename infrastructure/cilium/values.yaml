@@ -55,6 +55,12 @@ kubeProxyReplacement: true
 # agent's watch used to break via the kube-proxy ClusterIP path).
 k8sServiceHost: localhost
 k8sServicePort: 7445
+# Socket LB only in the host netns; pod Service traffic is translated per
+# packet at the pod's veth instead. Required for gVisor (runsc) pods, whose
+# userspace netstack never calls connect() on the host kernel, so socket LB
+# never sees them and every ClusterIP (DNS included) is unreachable.
+socketLB:
+  hostNamespaceOnly: true
 
 # Talos-specific: Talos forbids workloads from loading kernel modules, so
 # SYS_MODULE is DROPPED from Cilium's default agent capability set. Use this

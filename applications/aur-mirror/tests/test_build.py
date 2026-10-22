@@ -69,30 +69,37 @@ def test_select_artifacts_drops_unlisted_split_children(tmp_path):
 
 
 def test_keyserver_fallback_order(tmp_path, monkeypatch):
-    """Missing keys are tried on each keyserver in order until one works."""
-    (tmp_path / ".SRCINFO").write_text("\tvalidpgpkeys = AAAA\n", encoding="utf-8")
+    """Missing keys are tried on each keyserver in order until one works, in the sandbox."""
     calls = []
 
-    def fake_run(cmd, **_):
+    def fake_sandboxed(work, cmd, timeout):  # pylint: disable=unused-argument
         calls.append(cmd)
-        if "--list-keys" in cmd or cfg.GPG_KEYSERVERS[0] in cmd:
-            raise subprocess.CalledProcessError(2, cmd)
-        return subprocess.CompletedProcess(cmd, 0)
-    monkeypatch.setattr(build.subprocess, "run", fake_run)
-    build.import_validpgpkeys(tmp_path, LogTee(None))
+        failed = "--list-keys" in cmd or cfg.GPG_KEYSERVERS[0] in cmd
+        return subprocess.CompletedProcess(cmd, 2 if failed else 0)
+    monkeypatch.setattr(build, "run_sandboxed", fake_sandboxed)
+    build.import_validpgpkeys(tmp_path, "\tvalidpgpkeys = AAAA\n", LogTee(None))
     servers = [c[c.index("--keyserver") + 1] for c in calls if "--keyserver" in c]
     assert servers == cfg.GPG_KEYSERVERS[:2]
 
 
 def test_recipe_shipped_keys_imported_first(tmp_path, monkeypatch):
-    """keys/pgp/*.asc in the recipe is imported before any keyserver lookup."""
-    (tmp_path / "keys" / "pgp").mkdir(parents=True)
-    (tmp_path / "keys" / "pgp" / "AAAA.asc").write_text("key", encoding="utf-8")
+    """keys/pgp/*.asc in the recipe is imported, by its in-sandbox path, before lookups."""
+    (tmp_path / "src" / "keys" / "pgp").mkdir(parents=True)
+    (tmp_path / "src" / "keys" / "pgp" / "AAAA.asc").write_text("key", encoding="utf-8")
     calls = []
-    monkeypatch.setattr(build.subprocess, "run",
-                        lambda cmd, **_: calls.append(cmd) or subprocess.CompletedProcess(cmd, 0))
-    build.import_validpgpkeys(tmp_path, LogTee(None))
-    assert "--import" in calls[0]
+    monkeypatch.setattr(build, "run_sandboxed",
+                        lambda w, cmd, timeout: calls.append(cmd)
+                        or subprocess.CompletedProcess(cmd, 0))
+    build.import_validpgpkeys(tmp_path, "\tvalidpgpkeys = AAAA\n", LogTee(None))
+    assert calls[0][-2:] == ["--import", "/work/src/keys/pgp/AAAA.asc"]
+
+
+def test_build_runs_makepkg_only_in_sandbox(tmp_path):
+    """makepkg is launched through the sandbox, without -s or sudo."""
+    cmd = build.sandbox_build_cmd(tmp_path)
+    assert cmd[0] == "setpriv" and str(cfg.SANDBOX) in cmd
+    assert cmd[-3:] == ["makepkg", "--noconfirm", "--noprogressbar"]
+    assert "-s" not in cmd and "sudo" not in cmd
 
 
 def test_run_logged_tees_and_times_out(dirs):  # pylint: disable=unused-argument

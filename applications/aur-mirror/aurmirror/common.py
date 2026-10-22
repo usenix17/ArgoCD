@@ -33,11 +33,25 @@ def read_json(path: Path, default):
         return default
 
 
+def give_to_pipeline(path: Path) -> None:
+    """Hand a file the root build orchestrator wrote to the uid the other phases use.
+
+    The signer (uid 1000) rewrites status files, signs in staging and deletes
+    old log dirs, so nothing it later touches may stay root-owned.
+    """
+    if os.geteuid() == 0:
+        try:
+            os.chown(path, cfg.SIGNER_UID, cfg.SIGNER_UID, follow_symlinks=False)
+        except OSError as exc:
+            log.warning("Could not chown %s: %s", path, exc)
+
+
 def write_json(path: Path, data) -> None:
     """Write JSON atomically (tmp file + rename), so readers never see a torn file."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.tmp")
     tmp.write_text(json.dumps(data, indent=1, sort_keys=True), encoding="utf-8")
+    give_to_pipeline(tmp)
     os.replace(tmp, path)
 
 

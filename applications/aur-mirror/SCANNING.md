@@ -42,12 +42,16 @@ repo-write credential in the cluster.
    This is the **only** container with `ANTHROPIC_API_KEY`, and it **never runs
    makepkg**.
 2. **build** -- checks out exactly the scanned commit, re-verifies the recipe
-   hash, imports the recipe's signing keys (shipped `keys/pgp/*.asc`, then each
-   `validpgpkeys` from ubuntu / openpgp.org / archlinux keyservers in turn),
-   `makepkg`, drops split children that aren't allowlisted, then Trivy-scans
-   each artifact. One makepkg per pkgbase builds every split child. A commit
-   that already failed to build is not retried for 7 days unless it changes.
-   No GPG key, no API key here.
+   hash, then hands the checkout to a per-package sandbox (see below). In the
+   sandbox: `makepkg --printsrcinfo`, the recipe's signing keys (shipped
+   `keys/pgp/*.asc`, then each `validpgpkeys` from ubuntu / openpgp.org /
+   archlinux keyservers in turn), and `makepkg`. Between those, the trusted
+   orchestrator installs the build deps as root from the signed repos (Arch
+   and this mirror) and removes them again afterwards. It then picks up only
+   regular-file artifacts, drops split children that aren't allowlisted, and
+   Trivy-scans each artifact. One makepkg per pkgbase builds every split
+   child. A commit that already failed to build is not retried for 7 days
+   unless it changes. No GPG key, no API key here.
 3. **sign** -- re-verifies each staged artifact's SHA256, refuses anything not
    newer than the published version (an overlapping run can never downgrade),
    signs in staging, moves into the repo and `repo-add -R`s (rolled back on
@@ -84,14 +88,50 @@ would auto-publish. This is a deliberate tradeoff for homelab scale. If you
 ever want a specific high-risk package frozen, `approved: false` it and vendor
 a reviewed copy via a first-party `source:` git URL (see `wazuh-agent`).
 
+### Build isolation
+
+The builder pods run under gVisor (`runtimeClassName: gvisor`), so they have
+their own kernel, not the node's. Inside, the build container is root (in
+gVisor only) and acts as the trusted orchestrator. Recipe code never runs as
+that root: every `makepkg` and `gpg` call goes through `aur-sandbox`, which
+gives each package:
+
+- fresh user, mount, pid, ipc and uts namespaces, as uid 1000 with no
+  capabilities and no sudo (the image drops passwordless sudo, and gVisor
+  ignores setuid anyway);
+- a read-only `/usr /etc /opt /var/lib/pacman`, and its own work dir at
+  `/work` (checkout, keyring, HOME, TMPDIR) as the only writable place;
+- no view of staging, other builds, `/repo`, `/status` or the container's
+  root, which is unmounted after `pivot_root`.
+
+When makepkg exits, the kernel kills anything it left running in its pid
+namespace. Deps are installed before and removed after each build, so every
+build starts from the same base, like a clean chroot.
+
+How it's built, and why not the usual tools under gVisor:
+
+- **bubblewrap fails.** Its binds use `open_tree`, which gVisor lacks, and
+  loopback setup in a new netns fails too. aur-sandbox uses classic
+  `mount(2)` with `unshare` and `pivot_root` instead.
+- **`unshare --kill-child` fails.** It needs `pidfd_open`; the pid namespace
+  teardown covers the same need.
+- **flock does not cross pods.** gVisor keeps file locks inside each pod's
+  sandbox, so `flock` on the NFS lock volume no longer serializes the CronJob
+  against the PostSync hook. `aurmirror/lock.py` uses an atomic `mkdir` lock
+  directory with a 30s heartbeat. A lock left by a killed pod is broken after
+  10 minutes without one.
+- **Cluster prerequisites:**
+  - `user.max_user_namespaces > 0` on the nodes (Omni ConfigPatch
+    `300-user-namespaces`);
+  - Cilium `socketLB.hostNamespaceOnly`, or gVisor pods can't reach
+    ClusterIPs.
+  - See `infrastructure/gvisor/runtimeclass.yaml`.
+
 Known gaps, deferred on purpose:
 
-- **No clean-chroot builds.** Every package builds sequentially in one
-  container whose `builder` user has passwordless sudo, so a package that
-  passes the scan could tamper with later builds in the same run (or with
-  their staged artifacts and hashes). The fix is `makechrootpkg` per package
-  (devtools is already in the image).
-- **Broad build egress.** See `networkpolicy.yaml`.
+- **Shared network.** The sandbox shares the pod's network, since sources
+  must download. A build can reach whatever the builder egress policy allows
+  (see `networkpolicy.yaml`).
 
 ## Builder image digest pin
 

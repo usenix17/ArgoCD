@@ -1,0 +1,46 @@
+#!/bin/bash
+# Run one untrusted command (makepkg, gpg) for one package in a throwaway
+# sandbox. Called by the build phase as:
+#
+#   setpriv --reuid=1000 ... unshare -U -r -m -p -i -u --fork -- aur-sandbox WORK CMD...
+#
+# so this script starts as root of a fresh user, mount and pid namespace whose
+# real uid is 1000. It builds a minimal root (system dirs read-only, WORK
+# read-write at /work), pivots into it so nothing else of the container is
+# reachable, then drops into a nested user namespace as plain uid 1000 with
+# no capabilities. When the command (pid 1 here) exits, the kernel kills
+# everything left in the pid namespace.
+#
+# Built from classic mount(2) calls on purpose: under gVisor, bubblewrap fails
+# (no open_tree) and unshare --kill-child fails (no pidfd_open).
+set -euo pipefail
+
+work=$1
+shift
+root=/mnt/sbx
+
+mount -t tmpfs -o mode=755 sbx "$root"
+for d in usr etc opt var/lib/pacman; do
+  mkdir -p "$root/$d"
+  mount --rbind "/$d" "$root/$d"
+  mount -o remount,bind,ro "$root/$d"
+done
+for link in bin:usr/bin sbin:usr/bin lib:usr/lib lib64:usr/lib; do
+  ln -s "${link#*:}" "$root/${link%%:*}"
+done
+mkdir -p "$root"/{work,proc,dev,run,var/tmp,.old}
+mount -t tmpfs -o mode=1777 tmpfs "$root/run"
+mount -t tmpfs -o mode=1777 tmpfs "$root/var/tmp"
+mount --bind "$work" "$root/work"
+mount --rbind /dev "$root/dev"
+mount -t proc proc "$root/proc"
+
+cd "$root"
+pivot_root . .old
+umount -l /.old
+rmdir /.old
+cd /work/src
+
+exec unshare -U --map-user=1000 --map-group=1000 -- \
+  env -i HOME=/work/home TMPDIR=/work/tmp GNUPGHOME=/work/gnupg \
+  PATH=/usr/bin LANG=C.UTF-8 "$@"

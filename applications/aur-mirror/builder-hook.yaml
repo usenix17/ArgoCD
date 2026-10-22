@@ -11,9 +11,9 @@
 #
 # IMPORTANT: the pod spec below intentionally mirrors the CronJob in
 # builder.yaml (YAML anchors cannot span the two documents). Keep them in sync
-# -- image, env, volumes, resources. The flock on /repo/.build.lock serializes
-# this job against the scheduled cron so they never write the repo db / sign
-# concurrently.
+# -- image, runtimeClassName, env, volumes, resources. Every phase takes the
+# run lock (aurmirror/lock.py), so this job and the scheduled cron never write
+# the repo db / sign concurrently.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -24,7 +24,7 @@ metadata:
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   backoffLimit: 1
-  # Build time plus headroom to wait on the flock if a scheduled run is still
+  # Build time plus headroom to wait on the run lock if a scheduled run is still
   # in progress when an add lands.
   activeDeadlineSeconds: 36000
   template:
@@ -33,6 +33,8 @@ spec:
         app: aur-builder
     spec:
       restartPolicy: OnFailure
+      # gVisor kernel per pod; each package builds in its own aur-sandbox.
+      runtimeClassName: gvisor
       # The build phase runs untrusted PKGBUILD code; deny it a ServiceAccount
       # token so a malicious build cannot reach the Kubernetes API.
       automountServiceAccountToken: false
@@ -59,7 +61,7 @@ spec:
           emptyDir:
             sizeLimit: 50Gi
         - name: lock
-          # Coordination volume for the build flock, separate from the repo so
+          # Coordination volume for the run lock, separate from the repo so
           # the build phase can mount /repo read-only.
           persistentVolumeClaim:
             claimName: aur-mirror-lock-pvc
@@ -73,10 +75,8 @@ spec:
         # writing verdicts to the state PV. ONLY container with ANTHROPIC_API_KEY;
         # never runs makepkg, mounts neither repo nor GPG key. Always exits 0.
         - name: scan
-          image: registry.starnix.net/library/aur-builder@sha256:6d5da866d1774b7d74f25e29e7bd7b51a7d042486ffc4ac708e6ee5af2243767
+          image: registry.starnix.net/library/aur-builder@sha256:5d70c9733a452b40b17bb59089e370a77922dba97c62952b4ebe6e44e0c04d94
           command:
-            - flock
-            - /lock/.build.lock
             # Scan runs under the isolated anthropic venv (see Dockerfile); the
             # build/sign phases use the system python so package install-paths
             # resolve to /usr, not the venv prefix.
@@ -118,17 +118,18 @@ spec:
             limits:
               cpu: 1
               memory: 1Gi
-        # Phase 2: build (untrusted PKGBUILD code). Checks out each package's
-        # SCANNED commit. No GPG key or API key mounted here, so a malicious
-        # build can exfiltrate neither. Vetted artifacts are staged on build-dir
-        # for the sign phase. Runs after scan so verdicts exist before it builds.
+        # Phase 2: build. Checks out each package's SCANNED commit, installs deps
+        # from the signed repos, runs makepkg (the untrusted PKGBUILD code) in
+        # aur-sandbox. No GPG key or API key mounted here, so a malicious build
+        # can exfiltrate neither. Vetted artifacts are staged on build-dir for
+        # the sign phase. Runs after scan so verdicts exist before it builds.
         - name: build
-          image: registry.starnix.net/library/aur-builder@sha256:6d5da866d1774b7d74f25e29e7bd7b51a7d042486ffc4ac708e6ee5af2243767
-          # flock: blocks until the scheduled cron (if running) releases the lock,
-          # then builds -- so the two never build concurrently.
+          image: registry.starnix.net/library/aur-builder@sha256:5d70c9733a452b40b17bb59089e370a77922dba97c62952b4ebe6e44e0c04d94
+          # Root inside gVisor (not on the node): installs deps, drops builds to 1000.
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
           command:
-            - flock
-            - /lock/.build.lock
             - /usr/local/bin/aur-build-all
           env:
             - name: BUILD_PHASE
@@ -180,7 +181,7 @@ spec:
         # Phase 3 prep: import the GPG key into gpg-home (only the signer mounts
         # it), after the untrusted build init container has finished.
         - name: gpg-init
-          image: registry.starnix.net/library/aur-builder@sha256:6d5da866d1774b7d74f25e29e7bd7b51a7d042486ffc4ac708e6ee5af2243767
+          image: registry.starnix.net/library/aur-builder@sha256:5d70c9733a452b40b17bb59089e370a77922dba97c62952b4ebe6e44e0c04d94
           command:
             - sh
             - -c
@@ -209,10 +210,8 @@ spec:
         # Phase 3: sign + publish. Only container holding the key; runs no
         # PKGBUILD code. Reads staged artifacts, signs, repo-adds, pushes metrics.
         - name: signer
-          image: registry.starnix.net/library/aur-builder@sha256:6d5da866d1774b7d74f25e29e7bd7b51a7d042486ffc4ac708e6ee5af2243767
+          image: registry.starnix.net/library/aur-builder@sha256:5d70c9733a452b40b17bb59089e370a77922dba97c62952b4ebe6e44e0c04d94
           command:
-            - flock
-            - /lock/.build.lock
             - /usr/local/bin/aur-build-all
           env:
             - name: BUILD_PHASE

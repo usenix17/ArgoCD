@@ -7,6 +7,7 @@ import threading
 from pathlib import Path
 
 from . import config as cfg
+from .common import give_to_pipeline
 from .status import log_url
 
 
@@ -27,6 +28,8 @@ class LogTee:
             path.parent.mkdir(parents=True, exist_ok=True)
             self.url = log_url(path)
             self._fh = path.open("w", encoding="utf-8", errors="replace")
+            give_to_pipeline(path.parent)
+            give_to_pipeline(path)
         except (OSError, ValueError):
             self.url = None
             self._fh = None
@@ -59,8 +62,8 @@ def _pump(stream, tee: LogTee) -> None:
 
 
 def _clear_pacman_lock() -> None:
-    """A killed `makepkg -s` can leave pacman's lock behind and break later builds."""
-    subprocess.run(["sudo", "rm", "-f", "/var/lib/pacman/db.lck"], check=False)
+    """A killed dependency install can leave pacman's lock behind and break later builds."""
+    Path("/var/lib/pacman/db.lck").unlink(missing_ok=True)
 
 
 def run_logged(cmd: list[str], tee: LogTee, cwd: Path | None = None,

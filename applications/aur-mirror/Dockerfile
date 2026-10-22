@@ -1,10 +1,8 @@
 FROM archlinux:latest
 
-# System update + build toolchain. devtools is kept for clean-chroot builds
-# (makechrootpkg), a deferred hardening step; see SCANNING.md.
+# System update + build toolchain.
 RUN pacman -Syu --noconfirm \
     base-devel \
-    devtools \
     git \
     gnupg \
     python \
@@ -12,7 +10,8 @@ RUN pacman -Syu --noconfirm \
     python-yaml \
     && pacman -Sc --noconfirm
 
-# Build user. aurutils is bootstrapped as this user further down.
+# Build user: package builds run as this uid inside aur-sandbox. The sudoers
+# rule only serves the aurutils bootstrap below and is removed right after it.
 RUN useradd -m -G wheel builder \
     && echo '%wheel ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
 
@@ -33,14 +32,17 @@ RUN curl -sfL "https://raw.githubusercontent.com/aquasecurity/trivy/${TRIVY_VERS
 RUN python -m venv --system-site-packages /opt/scan-venv \
     && /opt/scan-venv/bin/pip install --no-cache-dir anthropic
 
-# Install aurutils. -Syu first: the toolchain layer above is often a cached
-# build with a stale sync db, and makepkg -si then 404s on rotated packages.
+# Install aurutils (pac runs `aur depends` from this image). -Syu first: the
+# toolchain layer above is often a cached build with a stale sync db, and
+# makepkg -si then 404s on rotated packages. Passwordless sudo goes away once
+# it is installed: nothing at runtime may escalate from the build user.
 RUN su - builder -c ' \
     sudo pacman -Syu --noconfirm \
     && git clone https://aur.archlinux.org/aurutils.git /tmp/aurutils \
     && cd /tmp/aurutils \
     && makepkg -si --noconfirm \
-    && rm -rf /tmp/aurutils'
+    && rm -rf /tmp/aurutils' \
+    && sed -i '/^%wheel ALL=(ALL) NOPASSWD: ALL$/d' /etc/sudoers
 
 # Trust the aur-mirror signing key and register the mirror as a pacman repo so
 # `makepkg -s` can install already-published mirror packages as build deps
@@ -62,7 +64,10 @@ RUN pacman-key --init \
 # under the venv python (anthropic SDK); the API key is mounted only there.
 COPY aurmirror /usr/local/lib/aur-mirror/aurmirror
 COPY aur-build-all /usr/local/bin/aur-build-all
-RUN chmod 755 /usr/local/bin/aur-build-all
+# aur-sandbox: per-package build sandbox (see the script); /mnt/sbx is its root.
+COPY aur-sandbox /usr/local/bin/aur-sandbox
+RUN chmod 755 /usr/local/bin/aur-build-all /usr/local/bin/aur-sandbox \
+    && mkdir -p /mnt/sbx
 
 USER builder
 WORKDIR /build

@@ -18,6 +18,7 @@ for _path in (Path(__file__).resolve().parent, Path("/usr/local/lib/aur-mirror")
 from aurmirror import config as cfg  # noqa: E402
 from aurmirror.build import run_build_phase  # noqa: E402
 from aurmirror.common import setup_logging  # noqa: E402
+from aurmirror.lock import run_lock  # noqa: E402
 from aurmirror.scan import run_scan_phase  # noqa: E402
 from aurmirror.sign import run_sign_phase  # noqa: E402
 
@@ -25,12 +26,12 @@ PHASES = {"scan": run_scan_phase, "build": run_build_phase, "sign": run_sign_pha
 
 
 def main() -> int:
-    """Run the configured phase, or all three in order."""
+    """Run the configured phase, or all three in order, each under the run lock."""
     setup_logging()
-    if cfg.BUILD_PHASE in PHASES:
-        return PHASES[cfg.BUILD_PHASE]()
-    for phase in (run_scan_phase, run_build_phase, run_sign_phase):
-        code = phase()
+    names = [cfg.BUILD_PHASE] if cfg.BUILD_PHASE in PHASES else list(PHASES)
+    for name in names:
+        with run_lock(name):
+            code = PHASES[name]()
         if code:
             return code
     return 0

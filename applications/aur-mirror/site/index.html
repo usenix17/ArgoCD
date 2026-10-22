@@ -143,6 +143,7 @@
         <li>
           <h3>2. Build and Trivy scan</h3>
           <p>The builder checks out exactly the commit Claude approved and re-verifies its hash, so a recipe cannot change between review and build. It imports the upstream signing keys the recipe declares, so <span class="mono">makepkg</span> can verify signed sources, then builds the package.</p>
+          <p>Each package builds in its own throwaway sandbox inside a <a href="https://gvisor.dev/">gVisor</a> container, as an unprivileged user with a read-only system. A build sees only its own files: not other builds, not the packages waiting to be signed, and not the repository. Anything it leaves running is killed when it finishes. Dependencies come only from signed repositories and are removed after each build, so every build starts clean.</p>
           <p>Every built package is unpacked and scanned with <a href="https://trivy.dev/">Trivy</a> for high and critical CVEs and for embedded secrets. Any finding, or a scan that fails to run, holds the package.</p>
           <p class="muted small">The builder holds no API key and no signing key. A build that fails is not retried for 7 days unless the recipe changes.</p>
         </li>
@@ -160,7 +161,7 @@
         </div>
         <div>
           <h3>Limits</h3>
-          <p class="small">Claude and Trivy are the only gates; no person reviews upstream changes. Packages build one after another in a shared container rather than a clean chroot, so a malicious package that slipped past review could affect later builds in the same run.</p>
+          <p class="small">Claude and Trivy are the only gates; no person reviews upstream changes. Builds share the builder's network, since sources have to download, so a malicious recipe that slipped past review could still reach the internet while it builds. It cannot reach other builds, the signing key or the repository.</p>
         </div>
       </div>
     </section>

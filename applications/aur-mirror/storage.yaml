@@ -32,7 +32,7 @@ spec:
       storage: 20Gi
 
 ---
-# Tiny coordination volume holding only the build flock. Separate from the repo
+# Tiny coordination volume holding only the run lock (aurmirror/lock.py). Separate from the repo
 # so the untrusted build phase can mount /repo read-only (least privilege) while
 # both phases still serialize on the lock here.
 # Create the directory first: mkdir -p /mnt/Store/aur-mirror/lock

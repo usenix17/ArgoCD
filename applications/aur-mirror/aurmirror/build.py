@@ -1,9 +1,13 @@
 """Build phase: build each scanned commit, Trivy-check it, stage what passes.
 
-No API key and no GPG key are present here. Per-package outcomes go into the
-staging manifest as ``events`` (staged, failed, held, backoff, uptodate) and
-``failed`` (holds), and the run always continues so the signer can publish
-whatever passed.
+This container is the trusted orchestrator (root inside gVisor). Recipe code
+never runs here directly: key import and makepkg go through the per-package
+sandbox (sandbox.py), and dependencies are installed by root from the signed
+repos around each build. No API key and no GPG key are present here.
+
+Per-package outcomes go into the staging manifest as ``events`` (staged,
+failed, held, backoff, uptodate) and ``failed`` (holds), and the run always
+continues so the signer can publish whatever passed.
 """
 import logging
 import shutil
@@ -14,53 +18,50 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import config as cfg
-from .aur import load_meta, pkgbase
+from .aur import git_url, load_meta, pkgbase
 from .buildlog import LogTee, run_logged
-from .common import artifact_parts, hold, load_approved, read_json, run, sha256_file, write_json
+from .common import (artifact_parts, give_to_pipeline, hold, load_approved, read_json, run,
+                     sha256_file, write_json)
 from .metrics import push_progress
 from .pyrebuild import bump_pkgrel, current_python, stale_python_packages
 from .recipe import recipe_sha256
+from .sandbox import (built_artifacts, hand_over, install_deps, make_work, remove_deps,
+                      run_sandboxed, sandbox_cmd, srcinfo_deps, srcinfo_values)
 from .scan import load_state
 from .status import log_path
 
 log = logging.getLogger("aurmirror")
 
 # Failures that will repeat for the same commit; retried after the backoff window.
-BACKOFF_REASONS = {"build_error", "build_timeout", "trivy", "no_artifacts"}
+BACKOFF_REASONS = {"build_error", "build_timeout", "trivy", "no_artifacts", "bad_deps"}
 
 
-def import_validpgpkeys(pkg_subdir: Path, tee: LogTee) -> None:
+def import_validpgpkeys(work: Path, srcinfo: str, tee: LogTee) -> None:
     """Make a recipe's signing keys available so makepkg can verify sources.
 
     Imports recipe-shipped keys/pgp/*.asc first, then fetches each
-    validpgpkeys fingerprint still missing from the keyservers in order.
-    Non-fatal: makepkg still verifies signatures and fails if a key is absent.
+    validpgpkeys fingerprint still missing from the keyservers in order. gpg
+    runs in the sandbox, into the package's own keyring. Non-fatal: makepkg
+    still verifies signatures and fails if a key is absent.
     """
-    for asc in sorted((pkg_subdir / "keys" / "pgp").glob("*.asc")):
-        _gpg(["--import", str(asc)], tee)
-    srcinfo = pkg_subdir / ".SRCINFO"
-    if not srcinfo.exists():
-        return
-    lines = srcinfo.read_text(encoding="utf-8", errors="replace").splitlines()
-    fprs = [v.strip() for k, _, v in (ln.partition("=") for ln in lines)
-            if k.strip() == "validpgpkeys" and v.strip()]
-    for fpr in fprs:
-        if _gpg(["--list-keys", fpr], None):
+    for asc in sorted((work / "src" / "keys" / "pgp").glob("*.asc")):
+        _gpg(work, ["--import", f"/work/src/keys/pgp/{asc.name}"], tee)
+    for fpr in srcinfo_values(srcinfo, "validpgpkeys"):
+        if _gpg(work, ["--list-keys", fpr], None):
             continue
-        if not any(_gpg(["--keyserver", ks, "--recv-keys", fpr], tee, ks)
+        if not any(_gpg(work, ["--keyserver", ks, "--recv-keys", fpr], tee, ks)
                    for ks in cfg.GPG_KEYSERVERS):
             tee.line(f"WARNING: key {fpr} not found on any keyserver; build may fail")
 
 
-def _gpg(args: list[str], tee: LogTee | None, server: str = "") -> bool:
+def _gpg(work: Path, args: list[str], tee: LogTee | None, server: str = "") -> bool:
     try:
-        subprocess.run(["gpg", "--batch", *args], check=True, timeout=20,
-                       capture_output=True)
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+        ok = run_sandboxed(work, ["gpg", "--batch", *args], timeout=20).returncode == 0
+    except (subprocess.TimeoutExpired, OSError):
         return False
-    if tee is not None and server:
+    if ok and tee is not None and server:
         tee.line(f"imported key {args[-1]} from {server}")
-    return True
+    return ok
 
 
 def trivy_clean(artifact: Path, tee: LogTee) -> bool:
@@ -96,10 +97,12 @@ def stage_artifacts(pkg: str, artifacts: list[Path]) -> list[dict]:
     """Move vetted artifacts into staging, recording each SHA256 for the signer."""
     dest = cfg.staging_dir() / pkg
     dest.mkdir(parents=True, exist_ok=True)
+    give_to_pipeline(dest)  # the signer signs in place and empties staging
     recorded = []
     for artifact in artifacts:
         target = dest / artifact.name
         shutil.move(str(artifact), str(target))
+        give_to_pipeline(target)
         recorded.append({"name": artifact.name, "sha256": sha256_file(target)})
     return recorded
 
@@ -125,53 +128,69 @@ class BuildContext:
     timeouts: dict
 
 
-def _fetch(entry: dict, commit: str, pkg_dir: Path, ctx: BuildContext, tee: LogTee) -> Path:
-    """Fetch the recipe and check out the scanned commit."""
-    pkg, source = entry["name"], entry.get("source")
-    if source:
-        run_logged(["git", "clone", "--quiet", source, pkg], tee, cwd=pkg_dir)
-        subdir = pkg_dir / pkg
-    else:
-        base = pkgbase(pkg, None, ctx.meta)
-        run_logged(["aur", "fetch", base], tee, cwd=pkg_dir)
-        subdir = pkg_dir / base
-    run_logged(["git", "checkout", "--quiet", commit], tee, cwd=subdir)
-    return subdir
-
-
 def _prepare(entry: dict, scan: dict, ctx: BuildContext,
              tee: LogTee) -> tuple[dict, Path | None]:
-    """Fetch the scanned commit and verify it is exactly what was reviewed."""
+    """Fetch the scanned commit, verify it is what was reviewed, hand it to the sandbox."""
     pkg = entry["name"]
-    pkg_dir = cfg.BUILD_DIR / pkg
-    pkg_dir.mkdir(parents=True, exist_ok=True)
+    work = cfg.BUILD_DIR / pkg
+    src = make_work(work)
     try:
-        subdir = _fetch(entry, scan["commit"], pkg_dir, ctx, tee)
+        run_logged(["git", "clone", "--quiet", git_url(pkg, entry.get("source"), ctx.meta),
+                    str(src)], tee)
+        run_logged(["git", "checkout", "--quiet", scan["commit"]], tee, cwd=src)
     except subprocess.CalledProcessError:
         return hold("fetch_error", "recipe fetch/checkout failed"), None
-    if recipe_sha256(subdir) != scan.get("recipe_sha256"):
+    if recipe_sha256(src) != scan.get("recipe_sha256"):
         return hold("hash_mismatch", "recipe content differs from what was scanned"), None
     if pkg in ctx.python.stale and not entry.get("source"):
-        bump_pkgrel(subdir, pkg, ctx.python.now)  # after the hash check: it edits PKGBUILD
-    import_validpgpkeys(subdir, tee)
-    return {}, subdir
+        bump_pkgrel(src, pkg, ctx.python.now)  # after the hash check: it edits PKGBUILD
+    hand_over(work)
+    return {}, work
+
+
+def sandbox_build_cmd(work: Path) -> list[str]:
+    """The sandboxed makepkg invocation (deps are already installed, so no -s)."""
+    return sandbox_cmd(work, ["makepkg", "--noconfirm", "--noprogressbar"])
+
+
+def _sandboxed_build(work: Path, timeout: int, tee: LogTee) -> dict:
+    """Keys and srcinfo in the sandbox, deps as root, then makepkg in the sandbox."""
+    try:
+        info = run_sandboxed(work, ["makepkg", "--printsrcinfo"], timeout=300)
+    except subprocess.TimeoutExpired:
+        return hold("build_error", "makepkg --printsrcinfo timed out")
+    if info.returncode:
+        tee.line(info.stderr)
+        return hold("build_error", "makepkg --printsrcinfo failed")
+    try:
+        deps = srcinfo_deps(info.stdout)
+    except ValueError as exc:
+        return hold("bad_deps", str(exc)[:200])
+    import_validpgpkeys(work, info.stdout, tee)
+    added: list[str] = []
+    try:
+        added = install_deps(deps, tee)
+        run_logged(sandbox_build_cmd(work), tee, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return hold("build_timeout", f"build exceeded {timeout}s")
+    except subprocess.CalledProcessError:
+        return hold("build_error", "dependency install or makepkg failed")
+    finally:
+        remove_deps(added, tee)
+    return {}
 
 
 def _make(entry: dict, scan: dict, ctx: BuildContext, tee: LogTee) -> tuple[dict, list | None]:
     """Prepare, build, filter and Trivy-check one package."""
-    problem, subdir = _prepare(entry, scan, ctx, tee)
-    if subdir is None:
+    problem, work = _prepare(entry, scan, ctx, tee)
+    if work is None:
         return problem, None
     pkg = entry["name"]
     timeout = ctx.timeouts.get(pkgbase(pkg, entry.get("source"), ctx.meta), cfg.BUILD_TIMEOUT)
-    try:
-        run_logged(["makepkg", "-s", "--noconfirm", "--noprogressbar", "--needed"],
-                   tee, cwd=subdir, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        return hold("build_timeout", f"build exceeded {timeout}s"), None
-    except subprocess.CalledProcessError:
-        return hold("build_error", "makepkg build failed"), None
-    artifacts = select_artifacts(sorted(subdir.glob("*.pkg.tar.zst")), ctx.wanted)
+    problem = _sandboxed_build(work, timeout, tee)
+    if problem:
+        return problem, None
+    artifacts = select_artifacts(built_artifacts(work / "src"), ctx.wanted)
     if not artifacts:
         return hold("no_artifacts", "build produced no allowlisted packages"), None
     clean = [trivy_clean(a, tee) for a in artifacts]  # scan (and log) every artifact
@@ -261,8 +280,9 @@ def run_build_phase() -> int:
     log.info("Build: %d approved packages", len(packages))
     ctx = _context(packages)
     cfg.staging_dir().mkdir(parents=True, exist_ok=True)
+    give_to_pipeline(cfg.staging_dir())
     try:
-        run(["sudo", "pacman", "-Syu", "--noconfirm"])
+        run(["pacman", "-Syu", "--noconfirm"])
     except subprocess.CalledProcessError as exc:
         log.warning("System refresh failed (continuing): %s", exc)
     events: dict[str, dict] = {}

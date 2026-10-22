@@ -35,6 +35,19 @@ PUBLIC_URL = os.environ.get("PUBLIC_URL", "https://aur.starnix.net")
 BUILD_TIMEOUT = int(os.environ.get("BUILD_TIMEOUT", "7200"))
 # A failed build is not retried for the same commit until this many days pass.
 BUILD_FAILURE_RETRY_DAYS = int(os.environ.get("BUILD_FAILURE_RETRY_DAYS", "7"))
+# Untrusted recipe code runs through this launcher as BUILD_UID (see aur-sandbox).
+SANDBOX = Path(os.environ.get("SANDBOX", "/usr/local/bin/aur-sandbox"))
+BUILD_UID = int(os.environ.get("BUILD_UID", "1000"))
+# The sign container's uid: it signs inside staging and empties it.
+SIGNER_UID = int(os.environ.get("SIGNER_UID", "1000"))
+ARCH = os.environ.get("ARCH", "x86_64")
+
+# Cross-pod run lock (a directory on the NFS lock volume; see lock.py).
+LOCK_DIR = Path(os.environ.get("LOCK_DIR", "/lock"))
+LOCK_STALE_SECONDS = int(os.environ.get("LOCK_STALE_SECONDS", "600"))
+LOCK_HEARTBEAT_SECONDS = int(os.environ.get("LOCK_HEARTBEAT_SECONDS", "30"))
+LOCK_POLL_SECONDS = int(os.environ.get("LOCK_POLL_SECONDS", "15"))
+
 # Keyservers tried in order for a recipe's validpgpkeys.
 GPG_KEYSERVERS = [s.strip() for s in os.environ.get(
     "GPG_KEYSERVERS",

@@ -75,7 +75,7 @@ spec:
         # writing verdicts to the state PV. ONLY container with ANTHROPIC_API_KEY;
         # never runs makepkg, mounts neither repo nor GPG key. Always exits 0.
         - name: scan
-          image: registry.starnix.net/library/aur-builder@sha256:5d70c9733a452b40b17bb59089e370a77922dba97c62952b4ebe6e44e0c04d94
+          image: registry.starnix.net/library/aur-builder@sha256:fe8a6b3490d3ee63307893738546a6c7b2551cd45b247c8295da02094f6cb4d8
           command:
             # Scan runs under the isolated anthropic venv (see Dockerfile); the
             # build/sign phases use the system python so package install-paths
@@ -124,7 +124,7 @@ spec:
         # can exfiltrate neither. Vetted artifacts are staged on build-dir for
         # the sign phase. Runs after scan so verdicts exist before it builds.
         - name: build
-          image: registry.starnix.net/library/aur-builder@sha256:5d70c9733a452b40b17bb59089e370a77922dba97c62952b4ebe6e44e0c04d94
+          image: registry.starnix.net/library/aur-builder@sha256:fe8a6b3490d3ee63307893738546a6c7b2551cd45b247c8295da02094f6cb4d8
           # Root inside gVisor (not on the node): installs deps, drops builds to 1000.
           securityContext:
             runAsUser: 0
@@ -181,7 +181,7 @@ spec:
         # Phase 3 prep: import the GPG key into gpg-home (only the signer mounts
         # it), after the untrusted build init container has finished.
         - name: gpg-init
-          image: registry.starnix.net/library/aur-builder@sha256:5d70c9733a452b40b17bb59089e370a77922dba97c62952b4ebe6e44e0c04d94
+          image: registry.starnix.net/library/aur-builder@sha256:fe8a6b3490d3ee63307893738546a6c7b2551cd45b247c8295da02094f6cb4d8
           command:
             - sh
             - -c
@@ -210,7 +210,7 @@ spec:
         # Phase 3: sign + publish. Only container holding the key; runs no
         # PKGBUILD code. Reads staged artifacts, signs, repo-adds, pushes metrics.
         - name: signer
-          image: registry.starnix.net/library/aur-builder@sha256:5d70c9733a452b40b17bb59089e370a77922dba97c62952b4ebe6e44e0c04d94
+          image: registry.starnix.net/library/aur-builder@sha256:fe8a6b3490d3ee63307893738546a6c7b2551cd45b247c8295da02094f6cb4d8
           command:
             - /usr/local/bin/aur-build-all
           env:

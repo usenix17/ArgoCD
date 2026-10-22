@@ -1,4 +1,5 @@
 """Claude review: risk gating, transient errors and the circuit breaker."""
+import json
 import types
 
 import pytest
@@ -27,7 +28,11 @@ class FakePermission(FakeAPIError):
 
 
 def fake_sdk(outcomes):
-    """Fake anthropic module: each create() pops a verdict dict, None, or an exception."""
+    """Fake anthropic module: each create() pops a verdict dict, None, or an exception.
+
+    A verdict comes back the way structured output returns it: a JSON text block,
+    after a (possibly empty) thinking block.
+    """
     calls = []
 
     class Messages:  # pylint: disable=too-few-public-methods
@@ -39,8 +44,10 @@ def fake_sdk(outcomes):
             out = outcomes.pop(0)
             if isinstance(out, Exception):
                 raise out
-            blocks = [] if out is None else [types.SimpleNamespace(type="tool_use", input=out)]
-            return types.SimpleNamespace(content=blocks)
+            blocks = [types.SimpleNamespace(type="thinking", thinking="")]
+            if out is not None:
+                blocks.append(types.SimpleNamespace(type="text", text=json.dumps(out)))
+            return types.SimpleNamespace(content=blocks, stop_reason="end_turn")
 
     class Client:  # pylint: disable=too-few-public-methods
         """Anthropic client stand-in."""
@@ -115,6 +122,25 @@ def test_no_verdict_recovers_on_retry(sdk):
     """A second attempt that answers is used."""
     sdk([None, {"safe": True, "risk": "low", "summary": "ok"}])
     assert review.Reviewer().quick("x", RECIPE)["safe"] is True
+
+
+def test_uses_structured_output_not_forced_tool(sdk):
+    """Sonnet 5.5 400s on forced tool_choice; the verdict comes from output_config."""
+    calls = sdk([{"safe": True, "risk": "low", "findings": [], "summary": "ok"}])
+    review.Reviewer().escalated("x", RECIPE, None)
+    assert "tool_choice" not in calls[0] and "tools" not in calls[0]
+    assert calls[0]["output_config"]["format"]["type"] == "json_schema"
+
+
+def test_refusal_and_bad_json_are_no_verdict():
+    """A refused, cut-off or unparsable reply is not taken as a verdict."""
+    text = types.SimpleNamespace(type="text", text='{"risk": "low"}')
+    for stop in ("refusal", "max_tokens"):
+        assert review._parse_verdict(  # pylint: disable=protected-access
+            types.SimpleNamespace(content=[text], stop_reason=stop)) is None
+    junk = types.SimpleNamespace(type="text", text="not json")
+    assert review._parse_verdict(  # pylint: disable=protected-access
+        types.SimpleNamespace(content=[junk], stop_reason="end_turn")) is None
 
 
 def test_partial_recipe_is_disclosed(sdk):

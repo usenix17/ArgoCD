@@ -115,6 +115,13 @@ How it's built, and why not the usual tools under gVisor:
   `mount(2)` with `unshare` and `pivot_root` instead.
 - **`unshare --kill-child` fails.** It needs `pidfd_open`; the pid namespace
   teardown covers the same need.
+- **fakeroot's IPC daemon fails** ("libfakeroot internal error: payload not
+  recognized"), so its faked chown() reaches the kernel and chown to root
+  fails. Packages that unpack root-owned archives (slack-desktop's .deb) broke.
+  The sandbox puts `fakeroot-userns` first on PATH as `fakeroot`: it runs
+  makepkg's package() in a user namespace that maps the build user to root, so
+  chown to root works and packages record root:root. Only uid/gid 0 is mapped,
+  so chown to any other user still fails.
 - **flock does not cross pods.** gVisor keeps file locks inside each pod's
   sandbox, so `flock` on the NFS lock volume no longer serializes the CronJob
   against the PostSync hook. `aurmirror/lock.py` uses a lock file

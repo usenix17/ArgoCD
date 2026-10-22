@@ -41,6 +41,7 @@ umount -l /.old
 rmdir /.old
 cd /work/src
 
+# /usr/local/lib/aur-sandbox/bin holds the user-namespace fakeroot (see there).
 exec unshare -U --map-user=1000 --map-group=1000 -- \
   env -i HOME=/work/home TMPDIR=/work/tmp GNUPGHOME=/work/gnupg \
-  PATH=/usr/bin LANG=C.UTF-8 "$@"
+  PATH=/usr/local/lib/aur-sandbox/bin:/usr/bin LANG=C.UTF-8 "$@"

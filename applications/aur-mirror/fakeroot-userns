@@ -1,0 +1,17 @@
+#!/bin/sh
+# fakeroot for aur-sandbox, installed ahead of /usr/bin on the sandbox PATH.
+#
+# Real fakeroot fakes chown() through a SysV IPC daemon, which does not work
+# under gVisor ("libfakeroot internal error: payload not recognized"), so any
+# chown to root -- e.g. bsdtar unpacking a .deb -- then fails with EINVAL.
+# Instead, run the command in a user namespace that maps the build user to
+# root: chown to root works for real, and makepkg's bsdtar records the files
+# as root:root. Only uid/gid 0 is mapped, so chown to any other user fails.
+case "${1:-}" in
+  -v|--version) echo "fakeroot-userns (aur-sandbox)"; exit 0 ;;
+  --) shift ;;
+esac
+# makepkg's inner run (-F) refuses to start unless this is set.
+FAKEROOTKEY=userns
+export FAKEROOTKEY
+exec unshare --map-root-user -- "$@"

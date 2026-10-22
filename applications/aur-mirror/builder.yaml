@@ -88,7 +88,7 @@ spec:
             # mounts neither the repo nor the GPG key. Always exits 0 (per-package
             # scan failures become fail-closed verdicts) so it can't block build.
             - name: scan
-              image: registry.starnix.net/library/aur-builder@sha256:fa35f338811366586ec6f0acba9525c132f8bb5f3bf8997e3dd86849ccf6a8c0
+              image: registry.starnix.net/library/aur-builder@sha256:bdbe5bc001bf9984da403b20e259f29fcb2e0ea8ad8ae3221378c1a58185497c
               command:
                 # Scan runs under the isolated anthropic venv (see Dockerfile);
                 # the build/sign phases use the system python so package
@@ -142,7 +142,7 @@ spec:
             # exfiltrate neither. Vetted artifacts are staged on build-dir for the
             # sign phase. Runs after scan so verdicts exist before it builds.
             - name: build
-              image: registry.starnix.net/library/aur-builder@sha256:fa35f338811366586ec6f0acba9525c132f8bb5f3bf8997e3dd86849ccf6a8c0
+              image: registry.starnix.net/library/aur-builder@sha256:bdbe5bc001bf9984da403b20e259f29fcb2e0ea8ad8ae3221378c1a58185497c
               # Root inside gVisor (not on the node): the trusted orchestrator
               # installs deps with pacman and drops each build to uid 1000.
               securityContext:
@@ -208,7 +208,7 @@ spec:
             # the signer (below) mounts. Runs after the build init container, so
             # the key is never present while untrusted build code is executing.
             - name: gpg-init
-              image: registry.starnix.net/library/aur-builder@sha256:fa35f338811366586ec6f0acba9525c132f8bb5f3bf8997e3dd86849ccf6a8c0
+              image: registry.starnix.net/library/aur-builder@sha256:bdbe5bc001bf9984da403b20e259f29fcb2e0ea8ad8ae3221378c1a58185497c
               command:
                 - sh
                 - -c
@@ -241,7 +241,7 @@ spec:
             # repo-adds them, prunes, and pushes metrics. This is the only
             # container that holds the key, and it never runs PKGBUILD code.
             - name: signer
-              image: registry.starnix.net/library/aur-builder@sha256:fa35f338811366586ec6f0acba9525c132f8bb5f3bf8997e3dd86849ccf6a8c0
+              image: registry.starnix.net/library/aur-builder@sha256:bdbe5bc001bf9984da403b20e259f29fcb2e0ea8ad8ae3221378c1a58185497c
               command:
                 - /usr/local/bin/aur-build-all
               env:

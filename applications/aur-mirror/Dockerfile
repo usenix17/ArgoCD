@@ -66,7 +66,9 @@ COPY aurmirror /usr/local/lib/aur-mirror/aurmirror
 COPY aur-build-all /usr/local/bin/aur-build-all
 # aur-sandbox: per-package build sandbox (see the script); /mnt/sbx is its root.
 COPY aur-sandbox /usr/local/bin/aur-sandbox
+COPY fakeroot-userns /usr/local/lib/aur-sandbox/bin/fakeroot
 RUN chmod 755 /usr/local/bin/aur-build-all /usr/local/bin/aur-sandbox \
+       /usr/local/lib/aur-sandbox/bin/fakeroot \
     && mkdir -p /mnt/sbx
 
 USER builder

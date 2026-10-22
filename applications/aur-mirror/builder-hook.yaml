@@ -1,8 +1,8 @@
 ---
 # On-add build trigger. ArgoCD runs this Job as a PostSync hook whenever the
 # aur-mirror app syncs -- notably when a package is added to allowlist.yaml --
-# so a new package is built within minutes instead of waiting for the 02:00
-# nightly cron. aur-build-all skips up-to-date packages, so a sync-triggered
+# so a new package is built within minutes instead of waiting for the hourly
+# cron. aur-build-all skips up-to-date packages, so a sync-triggered
 # run only builds what changed.
 #
 # hook-delete-policy BeforeHookCreation: ArgoCD deletes the previous instance
@@ -12,7 +12,7 @@
 # IMPORTANT: the pod spec below intentionally mirrors the CronJob in
 # builder.yaml (YAML anchors cannot span the two documents). Keep them in sync
 # -- image, env, volumes, resources. The flock on /repo/.build.lock serializes
-# this job against the nightly cron so they never write the repo db / sign
+# this job against the scheduled cron so they never write the repo db / sign
 # concurrently.
 apiVersion: batch/v1
 kind: Job
@@ -24,7 +24,7 @@ metadata:
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   backoffLimit: 1
-  # Build time plus headroom to wait on the flock if a nightly run is still
+  # Build time plus headroom to wait on the flock if a scheduled run is still
   # in progress when an add lands.
   activeDeadlineSeconds: 36000
   template:
@@ -124,7 +124,7 @@ spec:
         # for the sign phase. Runs after scan so verdicts exist before it builds.
         - name: build
           image: registry.starnix.net/library/aur-builder@sha256:6d5da866d1774b7d74f25e29e7bd7b51a7d042486ffc4ac708e6ee5af2243767
-          # flock: blocks until the nightly cron (if running) releases the lock,
+          # flock: blocks until the scheduled cron (if running) releases the lock,
           # then builds -- so the two never build concurrently.
           command:
             - flock

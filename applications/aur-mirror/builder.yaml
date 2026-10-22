@@ -14,8 +14,8 @@ metadata:
   name: aur-builder
   namespace: aur-mirror
 spec:
-  # Run nightly at 02:00
-  schedule: "0 2 * * *"
+  # Hourly: unchanged recipes are skipped cheaply, so updates land within the hour
+  schedule: "0 * * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 5
@@ -142,7 +142,7 @@ spec:
             - name: build
               image: registry.starnix.net/library/aur-builder@sha256:6d5da866d1774b7d74f25e29e7bd7b51a7d042486ffc4ac708e6ee5af2243767
               # flock serializes against the PostSync on-add job (builder-hook)
-              # so a nightly run and an on-add run never build concurrently.
+              # so a scheduled run and an on-add run never build concurrently.
               command:
                 - flock
                 - /lock/.build.lock

@@ -271,11 +271,16 @@ def build_packages_doc(inp: StatusInputs, run: dict) -> dict:
 
 
 def update_runs(prev_doc: dict, run: dict, now: int) -> dict:
-    """Append this run to runs.json and drop runs past the retention window."""
+    """Append this run to runs.json and drop runs past the retention window.
+
+    Idle runs (nothing reviewed, built or held) are not recorded, so hourly
+    checks don't bury the history.
+    """
     cutoff = now - _days(cfg.LOG_RETENTION_DAYS)
     runs = [r for r in prev_doc.get("runs", [])
             if r.get("started_at", 0) >= cutoff and r.get("id") != run["id"]]
-    runs.append(run)
+    if run.get("events"):
+        runs.append(run)
     runs.sort(key=lambda r: r.get("started_at", 0), reverse=True)
     return {"generated_at": now, "runs": runs}
 

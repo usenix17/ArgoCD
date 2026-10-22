@@ -103,8 +103,17 @@ def test_update_runs_trims(dirs):  # pylint: disable=unused-argument
     now = int(time.time())
     old = {"id": "old", "started_at": now - (cfg.LOG_RETENTION_DAYS + 1) * 86400}
     keep = {"id": "keep", "started_at": now - 86400}
-    doc = status.update_runs({"runs": [old, keep]}, {"id": "new", "started_at": now}, now)
+    new = {"id": "new", "started_at": now, "events": [{"name": "x"}]}
+    doc = status.update_runs({"runs": [old, keep]}, new, now)
     assert [r["id"] for r in doc["runs"]] == ["new", "keep"]
+
+
+def test_update_runs_skips_idle(dirs):  # pylint: disable=unused-argument
+    """A run that touched no package leaves the history unchanged."""
+    now = int(time.time())
+    keep = {"id": "keep", "started_at": now - 86400}
+    doc = status.update_runs({"runs": [keep]}, {"id": "idle", "started_at": now, "events": []}, now)
+    assert [r["id"] for r in doc["runs"]] == ["keep"]
 
 
 def test_cleanup_logs(dirs):  # pylint: disable=unused-argument

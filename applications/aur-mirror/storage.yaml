@@ -71,7 +71,7 @@ spec:
 # verdict, ...}}), written by the scan phase and read by the build phase.
 # Replaces the old git-committed aur-lock.configmap.yaml -- state lives here,
 # in-cluster, so no repo-write credential is ever needed. RWX (NFS, same as the
-# repo/lock volumes) so the nightly CronJob and the PostSync hook pod can both
+# repo/lock volumes) so the hourly CronJob and the PostSync hook pod can both
 # mount it without RWO attach conflicts across nodes.
 # Create the directory first: mkdir -p /mnt/Store/aur-mirror/state
 apiVersion: v1

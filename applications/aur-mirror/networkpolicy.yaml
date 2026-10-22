@@ -13,7 +13,7 @@
 # network-denied build) or a source-host allowlist -- both higher-maintenance,
 # so deferred. The per-commit Claude review is the primary gate.
 #
-# Selects the builder pods by the app=aur-builder label set on both the nightly
+# Selects the builder pods by the app=aur-builder label set on both the scheduled
 # CronJob (builder.yaml) and the PostSync hook Job (builder-hook.yaml).
 #
 # Not relied on for Vault: vault.starnix.net sits behind Cloudflare (public), so

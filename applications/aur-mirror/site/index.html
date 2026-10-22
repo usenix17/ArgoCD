@@ -23,6 +23,7 @@
         <a href="#held">Held</a>
         <a href="#builds">Recent builds</a>
         <a href="#packages">Packages</a>
+        <a href="#how">How it works</a>
         <a href="#use">Use this repo</a>
       </nav>
     </div>
@@ -120,6 +121,47 @@
           <thead><tr><th>Started</th><th>Took</th><th>Reviewed</th><th>Published</th><th>Failed</th><th>Held</th></tr></thead>
           <tbody></tbody>
         </table>
+      </div>
+    </section>
+
+    <section class="card" id="how">
+      <div class="card-head">
+        <h2>How it works</h2>
+        <p class="muted">Each run checks every package's recipe for changes. A package only moves through the pipeline when its recipe has changed, and each phase runs in its own container with only the secrets it needs.</p>
+      </div>
+      <ol class="how">
+        <li>
+          <h3>1. Claude reviews the recipe</h3>
+          <p>Before anything is built, Claude reads the PKGBUILD and every other file the maintainer committed, looking for supply-chain threats such as hidden downloads, encoded shell commands, credential theft, sources pointing at unrelated sites, and install scripts that would run as root on your machine.</p>
+          <ul>
+            <li>A pure version and checksum bump is compared against the last commit that passed and gets a quick review from Claude Haiku.</li>
+            <li>New packages, code changes and recipes too large to read in full get a deeper multi-pass review from Claude Sonnet.</li>
+            <li>A failing review holds the package. If the API is unreachable, the review is retried next run and nothing new is built.</li>
+          </ul>
+          <p class="muted small">This is the only container with the Anthropic API key, and it never runs the recipe.</p>
+        </li>
+        <li>
+          <h3>2. Build and Trivy scan</h3>
+          <p>The builder checks out exactly the commit Claude approved and re-verifies its hash, so a recipe cannot change between review and build. It imports the upstream signing keys the recipe declares, so <span class="mono">makepkg</span> can verify signed sources, then builds the package.</p>
+          <p>Every built package is unpacked and scanned with <a href="https://trivy.dev/">Trivy</a> for high and critical CVEs and for embedded secrets. Any finding, or a scan that fails to run, holds the package.</p>
+          <p class="muted small">The builder holds no API key and no signing key. A build that fails is not retried for 7 days unless the recipe changes.</p>
+        </li>
+        <li>
+          <h3>3. Sign and publish</h3>
+          <p>A separate signer re-checks each package's SHA256 against what the builder reported, refuses anything that is not newer than the published version, then GPG-signs the package and the repository database.</p>
+          <p>Packages that pacman no longer needs are deleted, and the status files on this page are rewritten at the end of every run.</p>
+          <p class="muted small">This is the only container with the signing key and the only one that can write to the repository.</p>
+        </li>
+      </ol>
+      <div class="how-notes">
+        <div>
+          <h3>Held packages</h3>
+          <p class="small">Holding fails closed. A held package keeps serving its last good build until a newer commit passes every check. The mirror never publishes an unreviewed or unscanned build.</p>
+        </div>
+        <div>
+          <h3>Limits</h3>
+          <p class="small">Claude and Trivy are the only gates; no person reviews upstream changes. Packages build one after another in a shared container rather than a clean chroot, so a malicious package that slipped past review could affect later builds in the same run.</p>
+        </div>
       </div>
     </section>
 

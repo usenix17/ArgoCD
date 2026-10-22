@@ -3,14 +3,15 @@
 Each phase holds it so the hourly CronJob and the ArgoCD PostSync hook never
 write the repo, state or staging at the same time. flock() can't do this under
 gVisor: each pod's sandbox keeps file locks in its own kernel, so they never
-reach NFS. A lock directory works because mkdir is atomic on the NFS server.
-The holder refreshes a heartbeat file; a lock whose heartbeat stops (a killed
-pod) is broken after LOCK_STALE_SECONDS.
+reach NFS. The lock is a file created with O_EXCL, which is atomic on the NFS
+server. It is a file, not a directory, because a gVisor sandbox can keep
+seeing a directory another pod removed, while it rechecks files properly.
+The holder refreshes the file's mtime as a heartbeat; a lock whose heartbeat
+stops (a killed pod) is broken after LOCK_STALE_SECONDS.
 """
 import contextlib
 import logging
 import os
-import shutil
 import threading
 import time
 import uuid
@@ -23,41 +24,34 @@ log = logging.getLogger("aurmirror")
 
 
 def lock_path() -> Path:
-    """The lock directory; it exists exactly while some phase holds the lock."""
-    return cfg.LOCK_DIR / ".build.lockd"
+    """The lock file; it exists exactly while some phase holds the lock."""
+    return cfg.LOCK_DIR / ".run.lock"
 
 
-def _owner_file(lock: Path) -> Path:
-    return lock / "owner"
-
-
-def _age(lock: Path) -> float:
-    """Seconds since the last heartbeat (or since the lock was made), 0 if gone."""
-    for path in (_owner_file(lock), lock):
-        try:
-            return time.time() - path.stat().st_mtime
-        except FileNotFoundError:
-            continue
-    return 0.0
-
-
-def _owner(lock: Path) -> str:
+def _age(path: Path) -> float:
+    """Seconds since the holder's last heartbeat, 0 if there is no holder."""
     try:
-        return _owner_file(lock).read_text(encoding="utf-8").strip()
+        return time.time() - path.stat().st_mtime
+    except FileNotFoundError:
+        return 0.0
+
+
+def _owner(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8").strip()
     except OSError:
         return "unknown"
 
 
 def try_acquire(owner: str) -> bool:
     """Take the lock if it is free."""
-    lock = lock_path()
     try:
-        lock.mkdir()
+        fd = os.open(lock_path(), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o664)
     except FileExistsError:
         return False
-    _owner_file(lock).write_text(owner, encoding="utf-8")
-    give_to_pipeline(lock)  # the uid-1000 phases must be able to break it if stale
-    give_to_pipeline(_owner_file(lock))
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(owner)
+    give_to_pipeline(lock_path())  # the uid-1000 phases must be able to break it if stale
     return True
 
 
@@ -66,7 +60,7 @@ def break_if_stale() -> bool:
 
     The lock is renamed aside first so that two waiters can't both break it.
     If the renamed lock turns out to be fresh (another pod took it between our
-    check and the rename), it is put back.
+    check and the rename), it is put back unless a new lock already exists.
     """
     lock = lock_path()
     if _age(lock) < cfg.LOCK_STALE_SECONDS:
@@ -78,17 +72,18 @@ def break_if_stale() -> bool:
         return False
     if _age(aside) < cfg.LOCK_STALE_SECONDS:
         with contextlib.suppress(OSError):
-            aside.rename(lock)
+            os.link(aside, lock)  # fails rather than clobbering a newer lock
+        aside.unlink(missing_ok=True)
         return False
     log.warning("Broke stale run lock held by %s", _owner(aside))
-    shutil.rmtree(aside, ignore_errors=True)
+    aside.unlink(missing_ok=True)
     return True
 
 
-def _heartbeat(lock: Path, stop: threading.Event) -> None:
+def _heartbeat(stop: threading.Event) -> None:
     while not stop.wait(cfg.LOCK_HEARTBEAT_SECONDS):
         try:
-            os.utime(_owner_file(lock))
+            os.utime(lock_path())
         except OSError as exc:
             log.warning("Run lock heartbeat failed: %s", exc)
 
@@ -99,7 +94,10 @@ def release(owner: str) -> None:
     if _owner(lock) != owner:
         log.warning("Run lock was taken over while held (now %s); leaving it", _owner(lock))
         return
-    shutil.rmtree(lock, ignore_errors=True)
+    try:
+        lock.unlink()
+    except OSError as exc:
+        log.warning("Could not release the run lock: %s", exc)
 
 
 @contextlib.contextmanager
@@ -115,7 +113,7 @@ def run_lock(phase: str):
             time.sleep(cfg.LOCK_POLL_SECONDS)
     log.info("Run lock acquired for %s", phase)
     stop = threading.Event()
-    beat = threading.Thread(target=_heartbeat, args=(lock_path(), stop), daemon=True)
+    beat = threading.Thread(target=_heartbeat, args=(stop,), daemon=True)
     beat.start()
     try:
         yield

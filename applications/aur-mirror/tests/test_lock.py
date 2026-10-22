@@ -24,12 +24,12 @@ def _make_old(path, seconds):
     os.utime(path, (old, old))
 
 
-def test_acquire_and_release(lockdir):  # pylint: disable=unused-argument
-    """The lock exists while held and is gone after."""
+def test_acquire_and_release(lockdir):
+    """The lock file exists while held and is gone after, leaving nothing behind."""
     with lock.run_lock("scan"):
-        assert lock.lock_path().is_dir()
+        assert lock.lock_path().is_file()
         assert not lock.try_acquire("other")
-    assert not lock.lock_path().exists()
+    assert not list(lockdir.iterdir())
 
 
 def test_second_holder_waits(lockdir):  # pylint: disable=unused-argument
@@ -50,32 +50,32 @@ def test_second_holder_waits(lockdir):  # pylint: disable=unused-argument
 
 
 def test_heartbeat_keeps_lock_fresh(lockdir):  # pylint: disable=unused-argument
-    """A held lock's owner file keeps being touched, so it never looks stale."""
+    """A held lock keeps being touched, so it never looks stale."""
     with lock.run_lock("build"):
-        owner = lock.lock_path() / "owner"
-        _make_old(owner, 3600)
+        _make_old(lock.lock_path(), 3600)
         time.sleep(0.3)
-        assert time.time() - owner.stat().st_mtime < 5
+        assert time.time() - lock.lock_path().stat().st_mtime < 5
         assert not lock.break_if_stale()
 
 
-def test_stale_lock_is_broken(lockdir):  # pylint: disable=unused-argument
-    """A lock whose holder stopped heartbeating is taken over."""
+def test_stale_lock_is_broken(lockdir):
+    """A lock whose holder stopped heartbeating is taken over, with no leftovers."""
     assert lock.try_acquire("dead-pod")
-    _make_old(lock.lock_path() / "owner", 3600)
+    _make_old(lock.lock_path(), 3600)
     with lock.run_lock("sign"):
-        assert "sign" in (lock.lock_path() / "owner").read_text(encoding="utf-8")
+        assert "sign" in lock.lock_path().read_text(encoding="utf-8")
+    assert not list(lockdir.iterdir())
 
 
 def test_fresh_lock_not_broken(lockdir):  # pylint: disable=unused-argument
     """A live holder's lock is left alone."""
     assert lock.try_acquire("alive")
     assert not lock.break_if_stale()
-    assert lock.lock_path().is_dir()
+    assert lock.lock_path().is_file()
 
 
 def test_release_leaves_someone_elses_lock(lockdir):  # pylint: disable=unused-argument
     """A holder whose lock was taken over does not delete the new owner's lock."""
     assert lock.try_acquire("new-owner")
     lock.release("old-owner")
-    assert lock.lock_path().is_dir()
+    assert lock.lock_path().is_file()

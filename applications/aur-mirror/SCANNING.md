@@ -117,9 +117,13 @@ How it's built, and why not the usual tools under gVisor:
   teardown covers the same need.
 - **flock does not cross pods.** gVisor keeps file locks inside each pod's
   sandbox, so `flock` on the NFS lock volume no longer serializes the CronJob
-  against the PostSync hook. `aurmirror/lock.py` uses an atomic `mkdir` lock
-  directory with a 30s heartbeat. A lock left by a killed pod is broken after
-  10 minutes without one.
+  against the PostSync hook. `aurmirror/lock.py` uses a lock file
+  (`/lock/.run.lock`) created with `O_EXCL`, atomic on the NFS server, whose
+  mtime is a 30s heartbeat. A lock left by a killed pod is broken after 10
+  minutes without one.
+- **A sandbox can keep seeing a directory another pod removed.** Files are
+  rechecked properly, so the lock is a file, not a directory: an `mkdir` lock
+  made every waiting pod sit out the full stale timeout after each release.
 - **Cluster prerequisites:**
   - `user.max_user_namespaces > 0` on the nodes (Omni ConfigPatch
     `300-user-namespaces`);

@@ -223,6 +223,35 @@ spec:
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
+  name: gvisor-runtime
+  namespace: argocd
+  annotations:
+    # RuntimeClass only (cluster-scoped). runsc comes from the Talos gVisor
+    # extension on every node; see infrastructure/gvisor/runtimeclass.yaml.
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/usenix17/ArgoCD.git
+    targetRevision: HEAD
+    path: infrastructure/gvisor
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
   name: metallb-helm
   namespace: argocd
   annotations:

@@ -1,0 +1,22 @@
+---
+# gVisor sandboxed runtime: pods with `runtimeClassName: gvisor` get their own
+# userspace kernel (runsc) instead of sharing the node's. Used by the AUR
+# builder, which runs untrusted PKGBUILD code.
+#
+# Requirements outside this repo, all already in place:
+# - The Talos gVisor system extension on every node (provides the runsc
+#   containerd handler).
+# - user.max_user_namespaces > 0 on the nodes (Omni ConfigPatch
+#   300-user-namespaces). Talos defaults it to 0, and runsc then fails every
+#   pod with "gofer: fork/exec /proc/self/exe: no space left on device".
+# - Cilium socketLB.hostNamespaceOnly (infrastructure/cilium/values.yaml), or
+#   gVisor pods can't reach any ClusterIP, DNS included.
+#
+# Known gVisor limits hit so far: no open_tree (bubblewrap binds fail), no
+# pidfd_open (unshare --kill-child fails), setuid ignored (no sudo), and file
+# locks stay inside each pod's sandbox (flock on NFS does not cross pods).
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: gvisor
+handler: runsc

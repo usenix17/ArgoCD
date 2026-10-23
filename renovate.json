@@ -1,0 +1,31 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "enabledManagers": ["kubernetes"],
+  "kubernetes": {
+    "managerFilePatterns": ["/^applications/cloudflare/.+\\.yaml$/"]
+  },
+  "dependencyDashboard": false,
+  "semanticCommits": "enabled",
+  "prHourlyLimit": 0,
+  "packageRules": [
+    {
+      "matchPackageNames": ["*"],
+      "enabled": false
+    },
+    {
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["cloudflare/cloudflared"],
+      "enabled": true,
+      "minimumReleaseAge": "3 days",
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": false,
+      "ignoreTests": true,
+      "semanticCommitType": "chore",
+      "semanticCommitScope": "cloudflare",
+      "commitMessageAction": "bump",
+      "commitMessageTopic": "cloudflared",
+      "commitMessageExtra": "to {{newVersion}}"
+    }
+  ]
+}

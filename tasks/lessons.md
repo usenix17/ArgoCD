@@ -37,3 +37,13 @@ It can catch one lucky reconcile window before looping, which masks the problem
 ALWAYS pair `--source=traefik-proxy` with `--traefik-disable-legacy`.
 Symptom: new Ingresses don't get DNS records; `kubectl -n external-dns get pods`
 shows high restart count.
+
+## A protocol fallback is a workaround, not a fix -- find the broken path
+cloudflared "crashing" on bork was systemd's 15s start timeout killing it while
+QUIC failed and it hadn't yet fallen back to http2. Forcing `--protocol http2`
+got it running, but Sasha expected QUIC to work, and the real cause was the
+primary WAN (FiberFirst, eth7) breaking QUIC to the tunnel edge on 7844. The
+k8s Deployment had carried `--protocol http2` for months with that root cause
+misattributed to the CNI. Rule: when a transport only works in fallback mode,
+bisect the path (other host, other network, `--edge-bind-address` per WAN on
+the router) before accepting the fallback as the answer.

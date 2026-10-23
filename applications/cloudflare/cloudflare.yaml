@@ -246,8 +246,12 @@ spec:
       containers:
         - name: cloudflared
           image: cloudflare/cloudflared:2026.10.3
-          # http2 transport: QUIC (UDP 7844) fails ALPN through the cluster's
-          # egress NAT/CNI ("tls: no application protocol"); http2 over TCP 443 is reliable.
+          # http2 transport: pod MTU is 1280 (Cilium VXLAN + WireGuard overhead)
+          # and the edge's QUIC handshake packets are larger, so they are dropped
+          # at the veth and QUIC times out. TCP negotiates MSS, so http2 works.
+          # QUIC itself is fine from the LAN (UniFi traffic route in /kronos/IaC
+          # routes.yml) and from hostNetwork; hostNetwork would bypass the
+          # CiliumNetworkPolicy below, so we keep http2.
           args: ["tunnel", "--no-autoupdate", "--protocol", "http2", "--metrics", "0.0.0.0:2000", "--grace-period", "30s", "run"]
           env:
             - name: TUNNEL_TOKEN

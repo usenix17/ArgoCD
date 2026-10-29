@@ -133,7 +133,7 @@ spec:
         - containerPort: 9300
         env:
         - name: OPENSEARCH_JAVA_OPTS
-          value: "-Xms1g -Xmx1g"
+          value: "-Xms2g -Xmx2g"
         - name: OPENSEARCH_PATH_CONF
           value: /usr/share/wazuh-indexer/config
         - name: INDEXER_ADMIN_PASSWORD
@@ -170,10 +170,10 @@ spec:
         resources:
           requests:
             cpu: 500m
-            memory: 2Gi
+            memory: 3Gi
           limits:
             cpu: 2000m
-            memory: 3Gi
+            memory: 4Gi
         readinessProbe:
           exec:
             command:

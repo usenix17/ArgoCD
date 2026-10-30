@@ -1,0 +1,192 @@
+# Wazuh indexer retention, applied by a PostSync hook on every sync.
+#
+# Why: with no retention, daily wazuh-alerts indices piled up at 3 shards
+# each (~492 shards on one node), exhausting the 1g heap and breaking SAML
+# login (2026-10-29). This keeps history bounded:
+#   - ISM policy "wazuh-retention" deletes alerts/archives/monitoring/
+#     statistics indices older than RETENTION (attached to existing indices
+#     too). wazuh-states-* hold current state, so they are not touched.
+#   - Template "starnix-wazuh-single-shard" (order 10, above Wazuh's own
+#     "wazuh" template, which filebeat rewrites) gives new daily indices
+#     1 shard: single node, 0 replicas, ~110 MB/day.
+# Change RETENTION below and sync; managed indices move to the new version.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wazuh-retention
+  namespace: wazuh
+data:
+  apply_retention.py: |
+    """Apply the Wazuh indexer retention policy and shard override.
+
+    Idempotent: safe to run on every ArgoCD sync. Reads the indexer admin
+    password from INDEXER_PASSWORD and talks to INDEXER_URL.
+    """
+    import base64
+    import hashlib
+    import json
+    import os
+    import ssl
+    import sys
+    import urllib.error
+    import urllib.request
+
+    URL = os.environ.get("INDEXER_URL", "https://wazuh-indexer:9200")
+    RETENTION = os.environ.get("RETENTION", "60d")
+    POLICY_ID = "wazuh-retention"
+    TEMPLATE_ID = "starnix-wazuh-single-shard"
+    HISTORY = ["wazuh-alerts-4.x-*", "wazuh-archives-4.x-*",
+               "wazuh-monitoring-*", "wazuh-statistics-*"]
+    DAILY = ["wazuh-alerts-4.x-*", "wazuh-archives-4.x-*"]
+
+    # The indexer's cert is self-signed and issued for wazuh.indexer.
+    CTX = ssl.create_default_context()
+    CTX.check_hostname = False
+    CTX.verify_mode = ssl.CERT_NONE
+    AUTH = base64.b64encode(
+        f"admin:{os.environ['INDEXER_PASSWORD']}".encode()).decode()
+
+
+    def call(method, path, body=None):
+        """Send one request; return (status, parsed JSON body)."""
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(
+            URL + path, data=data, method=method,
+            headers={"Authorization": f"Basic {AUTH}",
+                     "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, context=CTX, timeout=60) as resp:
+                return resp.status, json.load(resp)
+        except urllib.error.HTTPError as err:
+            return err.code, json.loads(err.read() or b"{}")
+
+
+    def desired_policy():
+        """Delete history indices once they are older than RETENTION.
+
+        The description carries a hash of the policy, because the indexer adds
+        its own defaults (e.g. action retry) and live states never compare equal.
+        """
+        policy = {
+            "default_state": "hot",
+            "states": [
+                {"name": "hot", "actions": [],
+                 "transitions": [{"state_name": "delete",
+                                  "conditions": {"min_index_age": RETENTION}}]},
+                {"name": "delete", "actions": [{"delete": {}}],
+                 "transitions": []},
+            ],
+            "ism_template": [{"index_patterns": HISTORY, "priority": 100}],
+        }
+        digest = hashlib.sha256(
+            json.dumps(policy, sort_keys=True).encode()).hexdigest()[:12]
+        policy["description"] = (f"Delete Wazuh history indices after "
+                                 f"{RETENTION} (managed by ArgoCD, {digest})")
+        return policy
+
+
+    def apply_policy():
+        """Create or update the ISM policy; return True if it changed."""
+        want = desired_policy()
+        status, live = call("GET", f"/_plugins/_ism/policies/{POLICY_ID}")
+        path = f"/_plugins/_ism/policies/{POLICY_ID}"
+        if status == 200:
+            if live["policy"].get("description") == want["description"]:
+                print(f"policy {POLICY_ID}: unchanged")
+                return False
+            path += (f"?if_seq_no={live['_seq_no']}"
+                     f"&if_primary_term={live['_primary_term']}")
+        status, resp = call("PUT", path, {"policy": want})
+        if status not in (200, 201):
+            sys.exit(f"policy {POLICY_ID}: PUT failed {status} {resp}")
+        print(f"policy {POLICY_ID}: {'updated' if '?' in path else 'created'}")
+        return True
+
+
+    def attach(changed):
+        """Manage existing indices; move managed ones to a new version."""
+        patterns = ",".join(HISTORY)
+        status, resp = call("POST", f"/_plugins/_ism/add/{patterns}",
+                            {"policy_id": POLICY_ID})
+        skipped = len(resp.get("failed_indices") or [])
+        print(f"add: {status} updated={resp.get('updated_indices')} "
+              f"skipped={skipped} (already managed)")
+        if changed:
+            status, resp = call("POST", f"/_plugins/_ism/change_policy/{patterns}",
+                                {"policy_id": POLICY_ID})
+            print(f"change_policy: {status} "
+                  f"updated={resp.get('updated_indices')}")
+
+
+    def apply_template():
+        """Give new daily indices one shard: the node is single, replicas 0."""
+        body = {"index_patterns": DAILY, "order": 10,
+                "settings": {"index": {"number_of_shards": 1}}}
+        status, resp = call("PUT", f"/_template/{TEMPLATE_ID}", body)
+        if status != 200:
+            sys.exit(f"template {TEMPLATE_ID}: PUT failed {status} {resp}")
+        print(f"template {TEMPLATE_ID}: applied")
+
+
+    def main():
+        """Apply the template, then the policy, then attach indices."""
+        apply_template()
+        attach(apply_policy())
+
+
+    if __name__ == "__main__":
+        main()
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: wazuh-retention-apply
+  namespace: wazuh
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: apply
+        image: python:3.13-alpine
+        command: ["python3", "/scripts/apply_retention.py"]
+        env:
+        - name: RETENTION
+          value: "60d"
+        - name: INDEXER_URL
+          value: https://wazuh-indexer.wazuh.svc:9200
+        - name: INDEXER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: wazuh-secrets
+              key: INDEXER_PASSWORD
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            memory: 128Mi
+        volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+          readOnly: true
+      volumes:
+      - name: scripts
+        configMap:
+          name: wazuh-retention

@@ -107,7 +107,7 @@ data:
     fi
 
   # Binds as an IPA system account (cn=sysaccounts): no password expiry and
-  # no interactive login. Usernames are the cn ("Sasha Karcz"), which is
+  # no interactive login. Usernames are the cn (full name), which is
   # what the existing Jellyfin LDAP users are named; uid would create
   # duplicates.
   LDAP-Auth.xml.tmpl: |
@@ -143,6 +143,11 @@ data:
       <EnabledFolders />
     </PluginConfiguration>
 
+  # UsernameClaim is name (full name), matching the LDAP cn that
+  # Jellyfin LDAP users are named by, so SSO and password logins reach
+  # the same account. preferred_username (login name) made SSO create a
+  # separate passwordless local user that then shadowed LDAP login.
+  # Authentik names are not unique: keep them distinct for real users.
   Jellyfin.Plugin.OIDC.xml.tmpl: |
     <?xml version="1.0" encoding="utf-8"?>
     <PluginConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
@@ -155,7 +160,7 @@ data:
           <ClientSecret>@OIDC_CLIENT_SECRET@</ClientSecret>
           <Scopes>openid profile email groups</Scopes>
           <RoleClaim>groups</RoleClaim>
-          <UsernameClaim>preferred_username</UsernameClaim>
+          <UsernameClaim>name</UsernameClaim>
           <DisplayNameClaim>name</DisplayNameClaim>
           <PictureClaim>picture</PictureClaim>
           <SyncProfileImage>true</SyncProfileImage>

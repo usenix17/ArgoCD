@@ -1,0 +1,199 @@
+---
+# Jellyfin plugins and their config, reconciled from git on every pod start
+# by the plugin-reconcile initContainer in jellyfin.yaml.
+#
+# Why: on 2026-10-29 the unpinned image moved Jellyfin to 12.x and the
+# "Update Plugins" task installed LDAP-Auth 24 beside 23. Both loaded,
+# every LDAP login crashed, and the LDAP config was reset to the plugin's
+# contoso defaults. Plugin state lived only on the config PVC, so recovery
+# meant a 20-minute Longhorn restore or retyping it from memory.
+#
+# What it enforces:
+#   - exactly the version in plugins.list for each plugin (downloaded and
+#     md5-checked if missing; other versions moved to data/plugin-backup/)
+#   - the "Update Plugins" task has no triggers
+#   - LDAP-Auth.xml and Jellyfin.Plugin.OIDC.xml rendered from the templates
+#     below, secrets from the jellyfin-secrets ExternalSecret
+#
+# UI edits to these two plugins are overwritten on the next restart: change
+# them here. To upgrade a plugin, update its plugins.list line (version, md5
+# and URL from the repo manifest) after checking its targetAbi matches the
+# pinned image.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jellyfin-plugin-config
+  namespace: jellyfin
+data:
+  # name|version|md5|url -- name and version form the plugin's directory
+  # name (<name>_<version>), exactly as Jellyfin's installer creates it.
+  plugins.list: |
+    LDAP Authentication|24.0.0.0|1e34d0e48336187922622c35d938380c|https://repo.jellyfin.org/files/plugin/ldap-authentication/ldap-authentication_24.0.0.0.zip
+    OIDC RBAC|1.0.10.0|81249667a265a6757cf010c23196f020|https://github.com/Ezeqielle/jellyfin-plugin-oidc/releases/download/v1.0.10/oidc-rbac.zip
+    Playback Reporting|19.0.0.0|d7b71b4e82c0cfa61c52eb333e19f179|https://repo.jellyfin.org/files/plugin/playback-reporting/playback-reporting_19.0.0.0.zip
+    InfuseSync|1.5.3.0|ff1105877de64635b0f394c1e72042fa|https://github.com/firecore/InfuseSync/releases/download/v1.5.3/InfuseSync-jellyfin-1.5.3.zip
+
+  reconcile.sh: |
+    #!/bin/sh
+    set -eu
+    SRC=/plugin-config
+    PLUGINS=/config/data/plugins
+    CONF=$PLUGINS/configurations
+    BACKUP=/config/data/plugin-backup
+    # Task id is derived from the task key "PluginUpdates", so it is stable.
+    TASK=/config/config/ScheduledTasks/f9b057c0-54e9-e6da-ee4a-88ffd146a403.js
+    mkdir -p "$CONF" "$BACKUP" "$(dirname "$TASK")"
+
+    while IFS='|' read -r name ver md5 url; do
+      [ -n "$name" ] || continue
+      dir="$PLUGINS/${name}_${ver}"
+      if [ ! -d "$dir" ]; then
+        echo "installing $name $ver"
+        tmp=$(mktemp -d)
+        wget -qO "$tmp/p.zip" "$url"
+        echo "$md5  $tmp/p.zip" | md5sum -c -s
+        mkdir -p "$dir.new"
+        unzip -oq "$tmp/p.zip" -d "$dir.new"
+        mv "$dir.new" "$dir"
+        rm -rf "$tmp"
+      fi
+      for other in "$PLUGINS/${name}"_*; do
+        [ "$other" = "$dir" ] && continue
+        [ -e "$other" ] || continue
+        echo "moving aside $(basename "$other")"
+        mv "$other" "$BACKUP/$(basename "$other").$(date +%s)"
+      done
+      if [ -f "$dir/meta.json" ]; then
+        sed -i 's/"autoUpdate": *true/"autoUpdate": false/' "$dir/meta.json"
+      fi
+    done < "$SRC/plugins.list"
+
+    echo '[]' > "$TASK"
+
+    # Literal token substitution (no regex), values XML-escaped.
+    render() {
+      awk '
+        function esc(s) {
+          gsub(/&/, "\\&amp;", s); gsub(/</, "\\&lt;", s); gsub(/>/, "\\&gt;", s)
+          return s
+        }
+        function put(line, tok, val,  i) {
+          while ((i = index(line, tok)) > 0)
+            line = substr(line, 1, i - 1) val substr(line, i + length(tok))
+          return line
+        }
+        {
+          $0 = put($0, "@LDAP_BIND_PASSWORD@", esc(ENVIRON["LDAP_BIND_PASSWORD"]))
+          $0 = put($0, "@OIDC_CLIENT_SECRET@", esc(ENVIRON["OIDC_CLIENT_SECRET"]))
+          print
+        }' "$SRC/$1" > "$CONF/$2.tmp"
+      chmod 664 "$CONF/$2.tmp"
+      mv "$CONF/$2.tmp" "$CONF/$2"
+      echo "rendered $2"
+    }
+
+    install -m 644 "$SRC/ipa-ca.crt" "$CONF/ipa-ca.crt"
+    # A missing secret keeps the current file rather than writing a config
+    # that cannot log anyone in; it is logged so the gap is visible.
+    if [ -n "${LDAP_BIND_PASSWORD:-}" ]; then
+      render LDAP-Auth.xml.tmpl LDAP-Auth.xml
+    else
+      echo "WARNING: ldap_bind_password missing, LDAP-Auth.xml left as is"
+    fi
+    if [ -n "${OIDC_CLIENT_SECRET:-}" ]; then
+      render Jellyfin.Plugin.OIDC.xml.tmpl Jellyfin.Plugin.OIDC.xml
+    else
+      echo "WARNING: client_secret missing, Jellyfin.Plugin.OIDC.xml left as is"
+    fi
+
+  # Binds as an IPA system account (cn=sysaccounts): no password expiry and
+  # no interactive login. Usernames are the cn ("Sasha Karcz"), which is
+  # what the existing Jellyfin LDAP users are named; uid would create
+  # duplicates.
+  LDAP-Auth.xml.tmpl: |
+    <?xml version="1.0" encoding="utf-8"?>
+    <PluginConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+      <LdapUsers />
+      <LdapServer>ipa9.starnix.net</LdapServer>
+      <LdapPort>636</LdapPort>
+      <UseSsl>true</UseSsl>
+      <UseStartTls>false</UseStartTls>
+      <SkipSslVerify>false</SkipSslVerify>
+      <LdapBindUser>uid=jellyfin,cn=sysaccounts,cn=etc,dc=starnix,dc=net</LdapBindUser>
+      <LdapBindPassword>@LDAP_BIND_PASSWORD@</LdapBindPassword>
+      <LdapBaseDn>cn=users,cn=accounts,dc=starnix,dc=net</LdapBaseDn>
+      <LdapSearchFilter>(memberOf=cn=ipausers,cn=groups,cn=accounts,dc=starnix,dc=net)</LdapSearchFilter>
+      <LdapAdminBaseDn />
+      <LdapAdminFilter />
+      <EnableLdapAdminFilterMemberUid>false</EnableLdapAdminFilterMemberUid>
+      <LdapSearchAttributes>uid, cn, mail, displayName</LdapSearchAttributes>
+      <LdapClientCertPath />
+      <LdapClientKeyPath />
+      <LdapRootCaPath>/config/data/plugins/configurations/ipa-ca.crt</LdapRootCaPath>
+      <CreateUsersFromLdap>true</CreateUsersFromLdap>
+      <AllowPassChange>false</AllowPassChange>
+      <LdapUidAttribute>uid</LdapUidAttribute>
+      <LdapUsernameAttribute>cn</LdapUsernameAttribute>
+      <LdapPasswordAttribute>userPassword</LdapPasswordAttribute>
+      <EnableLdapProfileImageSync>false</EnableLdapProfileImageSync>
+      <RemoveImagesNotInLdap>false</RemoveImagesNotInLdap>
+      <LdapProfileImageAttribute>jpegphoto</LdapProfileImageAttribute>
+      <LdapProfileImageFormat>Default</LdapProfileImageFormat>
+      <EnableAllFolders>false</EnableAllFolders>
+      <EnabledFolders />
+    </PluginConfiguration>
+
+  Jellyfin.Plugin.OIDC.xml.tmpl: |
+    <?xml version="1.0" encoding="utf-8"?>
+    <PluginConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+      <Providers>
+        <OidcProviderConfig>
+          <ProviderId>authentik</ProviderId>
+          <DisplayName>Authentik</DisplayName>
+          <Authority>https://auth.starnix.net/application/o/jellyfin/</Authority>
+          <ClientId>jellyfin</ClientId>
+          <ClientSecret>@OIDC_CLIENT_SECRET@</ClientSecret>
+          <Scopes>openid profile email groups</Scopes>
+          <RoleClaim>groups</RoleClaim>
+          <UsernameClaim>preferred_username</UsernameClaim>
+          <DisplayNameClaim>name</DisplayNameClaim>
+          <PictureClaim>picture</PictureClaim>
+          <SyncProfileImage>true</SyncProfileImage>
+          <Enabled>true</Enabled>
+          <ButtonColor>#fd4b2d</ButtonColor>
+          <ButtonIcon />
+          <AdditionalParameters />
+          <ServerBaseUrl>https://jellyfin.starnix.net</ServerBaseUrl>
+        </OidcProviderConfig>
+      </Providers>
+      <RoleMappings />
+      <DefaultProvider>authentik</DefaultProvider>
+      <AutoCreateUsers>true</AutoCreateUsers>
+      <DefaultRoleName />
+    </PluginConfiguration>
+
+  # IPA CA (O=STARNIX.NET, CN=Certificate Authority, expires 2043-12-07),
+  # issuer of ipa9's LDAPS cert. SHA-256 fingerprint
+  # 2C:6A:FB:6E:CB:C1:55:A7:0C:A0:6D:5E:CB:79:DC:C4:EE:9B:CD:66:32:3B:1E:43:38:63:AA:B3:91:75:A8:35
+  ipa-ca.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIIDizCCAnOgAwIBAgIBLzANBgkqhkiG9w0BAQsFADA2MRQwEgYDVQQKDAtTVEFS
+    TklYLk5FVDEeMBwGA1UEAwwVQ2VydGlmaWNhdGUgQXV0aG9yaXR5MB4XDTIzMTIw
+    NzE5MjUwNVoXDTQzMTIwNzE5MjUwNVowNjEUMBIGA1UECgwLU1RBUk5JWC5ORVQx
+    HjAcBgNVBAMMFUNlcnRpZmljYXRlIEF1dGhvcml0eTCCASIwDQYJKoZIhvcNAQEB
+    BQADggEPADCCAQoCggEBAOed8+32mnshvKaFzm6EA7+yhm9hL5u2puyNMX4317pl
+    M22NTDe/z69QfZYlju5HXZemcKFqLW4vZVjyJb6Gj2vAwp4w96PbMKr4B3n6c/rN
+    f4C9IeLNCR51jFWolsC79N5/YBKyDyji1c7dRDOmt+QjK2CC7hCkZn4mqajym20V
+    JrnqY9w+4thBy1mGnD4aMSlvdhD1Psf4wJWJuZLIhA2PbnkVAOs/zB6LAezUwyRT
+    KfaPKEpED6pFy+SrSwKK/ja6TpOLW35QCS3wnEa5jeAQvfub+ggC8Nc87cZrntn8
+    2reUeEqNX2cAbCqDe3m7qiUDVUkS20yrwXyVKh+UBn8CAwEAAaOBozCBoDAfBgNV
+    HSMEGDAWgBSOKxjdl5EQgimwCp9sWhZzJC7vfzAdBgNVHQ4EFgQUjisY3ZeREIIp
+    sAqfbFoWcyQu738wDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAcYwPQYI
+    KwYBBQUHAQEEMTAvMC0GCCsGAQUFBzABhiFodHRwOi8vaXBhLWNhLnN0YXJuaXgu
+    bmV0L2NhL29jc3AwDQYJKoZIhvcNAQELBQADggEBAN9OZum4FiX0zfOvJySJragu
+    MJvrL8YhhF38ThTECGXTdd4zNhjvisXFs9dV37hWTyGJ4u4KlitxYdn10K4Khc7G
+    OsZ9VL7gMrIZrTfj1fUM6EO1PeG+N3aF1A9LJxpA68sQG+V0H0iOGwhred2DMEYC
+    n7MVOK0vFabqSdtko1UxAu1pj8ZgU9OVzTM8EzJq/imLQ8KWJpaU+FvkTOex7tJ1
+    QpMggZVaaf8iFhdFoT3mWgVNJ3VYjKYyxEcp2Dbpf4KB1vD3ljgaM8NL9Jmjnrs3
+    gubqbSSirQnzfRH54qwxtVM+aPuY+/qg7O3v4e2R+XHNsqumRG7YiDNei+kFpdU=
+    -----END CERTIFICATE-----

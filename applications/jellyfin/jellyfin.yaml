@@ -278,9 +278,44 @@ spec:
         supplementalGroups: [44, 105]
       hostNetwork: false
       dnsPolicy: ClusterFirst
+      # Pins plugin versions and restores plugin config from git on every
+      # start; see plugin-config.yaml. ConfigMap edits apply on the next
+      # restart (kubectl -n jellyfin rollout restart deploy/jellyfin).
+      initContainers:
+      - name: plugin-reconcile
+        image: alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+        command: ["sh", "/plugin-config/reconcile.sh"]
+        env:
+        - name: LDAP_BIND_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: jellyfin-secrets
+              key: ldap_bind_password
+              optional: true
+        - name: OIDC_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: jellyfin-secrets
+              key: client_secret
+              optional: true
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            memory: 128Mi
+        volumeMounts:
+        - name: config-volume
+          mountPath: "/config"
+        - name: plugin-config
+          mountPath: "/plugin-config"
+          readOnly: true
       containers:
       - name: jellyfin
-        image: jellyfin/jellyfin
+        # Pinned: the unpinned tag moved Jellyfin 10.11 -> 12.4 unattended
+        # on 2026-10-29 and pulled ABI-12 plugins in with it. Bump on purpose,
+        # together with plugins.list in plugin-config.yaml.
+        image: jellyfin/jellyfin:12.4.20261026-211555@sha256:fea863d0cd9ec445985d9c75fc6ed64e38a1d2766cf0c250a33d553f4fc1b771
         ports:
         - containerPort: 8096
           name: http
@@ -332,6 +367,9 @@ spec:
       - name: config-volume
         persistentVolumeClaim:
           claimName: jellyfin-config-longhorn-pvc
+      - name: plugin-config
+        configMap:
+          name: jellyfin-plugin-config
       - name: series-volume
         persistentVolumeClaim:
           claimName: jellyfin-series-pvc

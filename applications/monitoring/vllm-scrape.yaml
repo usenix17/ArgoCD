@@ -1,0 +1,20 @@
+# Scrape vLLM on bork (192.168.1.86, outside the cluster), the LLM box behind
+# Open WebUI. vLLM serves Prometheus metrics on its API port at /metrics. The
+# kube-prometheus-stack Prometheus selects ScrapeConfigs labeled
+# release: monitoring in its own namespace.
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: vllm-bork
+  namespace: monitoring
+  labels:
+    release: monitoring
+spec:
+  metricsPath: /metrics
+  scrapeInterval: 15s
+  staticConfigs:
+    - targets:
+        - bork.starnix.net:8000
+      labels:
+        job: vllm
+        instance: bork

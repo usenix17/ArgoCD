@@ -19,13 +19,16 @@ data:
       "panels": [
         {
           "id": 1,
-          "title": "Decode speed (tok/s per request)",
-          "description": "Generated tokens divided by time spent decoding, so idle time does not drag it down",
+          "title": "Decode speed (tok/s)",
+          "description": "Per request: how fast one reply streams. Total: all concurrent requests together while generating. Busy time is derived from engine steps, so idle time does not drag either down",
           "type": "stat",
           "gridPos": { "x": 0, "y": 0, "w": 6, "h": 5 },
           "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
           "fieldConfig": { "defaults": { "unit": "none", "decimals": 0 } },
-          "targets": [{ "datasource": { "type": "prometheus" }, "expr": "sum(rate(vllm:generation_tokens_total{job=\"vllm\"}[5m])) / sum(rate(vllm:request_decode_time_seconds_sum{job=\"vllm\"}[5m]))", "legendFormat": "tok/s" }]
+          "targets": [
+            { "datasource": { "type": "prometheus" }, "expr": "sum(rate(vllm:generation_tokens_total{job=\"vllm\"}[5m])) / sum(rate(vllm:request_decode_time_seconds_sum{job=\"vllm\"}[5m]))", "legendFormat": "per request" },
+            { "datasource": { "type": "prometheus" }, "expr": "sum(rate(vllm:generation_tokens_total{job=\"vllm\"}[5m])) * (sum(rate(vllm:generation_tokens_total{job=\"vllm\"}[5m])) - sum(rate(vllm:spec_decode_num_accepted_tokens_total{job=\"vllm\"}[5m]))) / (sum(rate(vllm:request_decode_time_seconds_sum{job=\"vllm\"}[5m])) * sum(rate(vllm:iteration_tokens_total_count{job=\"vllm\"}[5m])))", "legendFormat": "total" }
+          ]
         },
         {
           "id": 2,
@@ -69,6 +72,7 @@ data:
           "fieldConfig": { "defaults": { "unit": "none", "custom": { "fillOpacity": 10, "spanNulls": false } } },
           "targets": [
             { "datasource": { "type": "prometheus" }, "expr": "sum(rate(vllm:generation_tokens_total{job=\"vllm\"}[1m])) / sum(rate(vllm:request_decode_time_seconds_sum{job=\"vllm\"}[1m]))", "legendFormat": "decode speed (per request)" },
+            { "datasource": { "type": "prometheus" }, "expr": "sum(rate(vllm:generation_tokens_total{job=\"vllm\"}[1m])) * (sum(rate(vllm:generation_tokens_total{job=\"vllm\"}[1m])) - sum(rate(vllm:spec_decode_num_accepted_tokens_total{job=\"vllm\"}[1m]))) / (sum(rate(vllm:request_decode_time_seconds_sum{job=\"vllm\"}[1m])) * sum(rate(vllm:iteration_tokens_total_count{job=\"vllm\"}[1m])))", "legendFormat": "decode speed (all requests, while generating)" },
             { "datasource": { "type": "prometheus" }, "expr": "sum(rate(vllm:generation_tokens_total{job=\"vllm\"}[1m]))", "legendFormat": "generation throughput" },
             { "datasource": { "type": "prometheus" }, "expr": "sum(rate(vllm:prompt_tokens_total{job=\"vllm\"}[1m]))", "legendFormat": "prompt throughput" }
           ]

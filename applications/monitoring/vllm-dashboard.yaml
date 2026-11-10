@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vllm-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  vllm.json: |
+    {
+      "title": "vLLM (bork)",
+      "uid": "vllm-bork",
+      "description": "Generation speed and load for vLLM on bork, scraped by ScrapeConfig vllm-bork",
+      "tags": ["vllm", "llm"],
+      "timezone": "browser",
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "time": { "from": "now-6h", "to": "now" },
+      "panels": [
+        {
+          "id": 1,
+          "title": "Decode speed (tok/s per request)",
+          "description": "Generated tokens divided by time spent decoding, so idle time does not drag it down",
+          "type": "stat",
+          "gridPos": { "x": 0, "y": 0, "w": 6, "h": 5 },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+          "fieldConfig": { "defaults": { "unit": "none", "decimals": 0 } },
+          "targets": [{ "datasource": { "type": "prometheus" }, "expr": "sum(rate(vllm:generation_tokens_total{job=\"vllm\"}[5m])) / sum(rate(vllm:request_decode_time_seconds_sum{job=\"vllm\"}[5m]))", "legendFormat": "tok/s" }]
+        },
+        {
+          "id": 2,
+          "title": "MTP draft acceptance",
+          "type": "stat",
+          "gridPos": { "x": 6, "y": 0, "w": 6, "h": 5 },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+          "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 0, "min": 0, "max": 1 } },
+          "targets": [{ "datasource": { "type": "prometheus" }, "expr": "sum(rate(vllm:spec_decode_num_accepted_tokens_total{job=\"vllm\"}[5m])) / sum(rate(vllm:spec_decode_num_draft_tokens_total{job=\"vllm\"}[5m]))", "legendFormat": "accepted" }]
+        },
+        {
+          "id": 3,
+          "title": "KV cache used",
+          "type": "gauge",
+          "gridPos": { "x": 12, "y": 0, "w": 6, "h": 5 },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit", "min": 0, "max": 1,
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 0.7 }, { "color": "red", "value": 0.9 }] }
+            }
+          },
+          "targets": [{ "datasource": { "type": "prometheus" }, "expr": "max(vllm:kv_cache_usage_perc{job=\"vllm\"})", "legendFormat": "KV" }]
+        },
+        {
+          "id": 4,
+          "title": "Requests",
+          "type": "stat",
+          "gridPos": { "x": 18, "y": 0, "w": 6, "h": 5 },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
+          "targets": [
+            { "datasource": { "type": "prometheus" }, "expr": "sum(vllm:num_requests_running{job=\"vllm\"})", "legendFormat": "running" },
+            { "datasource": { "type": "prometheus" }, "expr": "sum(vllm:num_requests_waiting{job=\"vllm\"})", "legendFormat": "waiting" }
+          ]
+        },
+        {
+          "id": 5,
+          "title": "Tokens per second",
+          "description": "Decode speed per request, plus raw prompt and generation throughput",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 5, "w": 24, "h": 9 },
+          "fieldConfig": { "defaults": { "unit": "none", "custom": { "fillOpacity": 10, "spanNulls": false } } },
+          "targets": [
+            { "datasource": { "type": "prometheus" }, "expr": "sum(rate(vllm:generation_tokens_total{job=\"vllm\"}[1m])) / sum(rate(vllm:request_decode_time_seconds_sum{job=\"vllm\"}[1m]))", "legendFormat": "decode speed (per request)" },
+            { "datasource": { "type": "prometheus" }, "expr": "sum(rate(vllm:generation_tokens_total{job=\"vllm\"}[1m]))", "legendFormat": "generation throughput" },
+            { "datasource": { "type": "prometheus" }, "expr": "sum(rate(vllm:prompt_tokens_total{job=\"vllm\"}[1m]))", "legendFormat": "prompt throughput" }
+          ]
+        },
+        {
+          "id": 6,
+          "title": "Time to first token",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 14, "w": 12, "h": 8 },
+          "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 } } },
+          "targets": [
+            { "datasource": { "type": "prometheus" }, "expr": "histogram_quantile(0.5, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{job=\"vllm\"}[5m])))", "legendFormat": "p50" },
+            { "datasource": { "type": "prometheus" }, "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{job=\"vllm\"}[5m])))", "legendFormat": "p95" }
+          ]
+        },
+        {
+          "id": 7,
+          "title": "Prompt size per request",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 14, "w": 12, "h": 8 },
+          "fieldConfig": { "defaults": { "unit": "none", "custom": { "fillOpacity": 10 } } },
+          "targets": [
+            { "datasource": { "type": "prometheus" }, "expr": "histogram_quantile(0.5, sum by (le) (rate(vllm:request_prompt_tokens_bucket{job=\"vllm\"}[5m])))", "legendFormat": "p50 prompt tokens" },
+            { "datasource": { "type": "prometheus" }, "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:request_prompt_tokens_bucket{job=\"vllm\"}[5m])))", "legendFormat": "p95 prompt tokens" }
+          ]
+        }
+      ]
+    }

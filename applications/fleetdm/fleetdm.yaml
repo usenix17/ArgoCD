@@ -279,12 +279,14 @@ spec:
           periodSeconds: 5
           timeoutSeconds: 5
           failureThreshold: 3
+        # The hourly vulnerabilities cron (:39) loads CVE feeds in memory and
+        # was OOM-killed at 2Gi (32x/week); Fleet sizes vuln processing at ~4GB
         resources:
           requests:
-            memory: "512Mi"
+            memory: "1Gi"
             cpu: "250m"
           limits:
-            memory: "2Gi"
+            memory: "4Gi"
             cpu: "1000m"
 ---
 # Ingress

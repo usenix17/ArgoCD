@@ -63,8 +63,6 @@ data:
         default-alert:
           failure-threshold: 3
           send-on-resolved: true
-      slack:
-        webhook-url: "https://hooks.slack.com/services/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"
 
     endpoints:
       # ── Jellyfin ────────────────────────────────────────────────────────────
@@ -328,10 +326,6 @@ data:
           - "[CERTIFICATE_EXPIRATION] > 240h"
         alerts:
           - type: discord
-          - type: slack
-            failure-threshold: 5
-            description: "healthcheck failed 5 times in a row"
-            send-on-resolved: true
 
     storage:
       type: sqlite

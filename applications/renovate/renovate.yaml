@@ -4,7 +4,8 @@
 #
 # The token can push to the GitOps repo, so a compromised Renovate image could
 # commit manifests. Bounded by: a fine-grained PAT scoped to this one repo,
-# the image pinned by digest, no Kubernetes API token, and public-only egress.
+# the image pinned by digest (and allowlisted by the operator policy), no
+# Kubernetes API token, and public-only egress.
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
@@ -23,65 +24,68 @@ spec:
         key: cluster/renovate
 
 ---
-apiVersion: batch/v1
-kind: CronJob
+# OIDC client secret for the operator UI. authentik generates it (blueprint
+# renovate-oidc); it was copied once into OpenBao cluster/renovate-oidc.
+# Kept out of renovate-secrets, whose keys reach the Renovate job pods.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: renovate-oidc
+  namespace: renovate
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao
+    kind: ClusterSecretStore
+  target:
+    name: renovate-oidc
+    creationPolicy: Owner
+  data:
+    - secretKey: client-secret
+      remoteRef:
+        key: cluster/renovate-oidc
+        property: client-secret
+
+---
+# Scheduled by the renovate-operator app. Discovery only sees what the
+# repo-scoped PAT can see; the filter pins it to this repo anyway.
+apiVersion: renovate-operator.mogenius.com/v1alpha1
+kind: RenovateJob
 metadata:
   name: renovate
   namespace: renovate
+  annotations:
+    # The CRD comes from the renovate-operator app; don't fail dry-run first
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   schedule: "17 * * * *"
-  concurrencyPolicy: Forbid
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 3
-  jobTemplate:
-    spec:
-      backoffLimit: 0
-      activeDeadlineSeconds: 1800
-      template:
-        metadata:
-          labels: { app: renovate }
-        spec:
-          restartPolicy: Never
-          automountServiceAccountToken: false
-          securityContext:
-            runAsNonRoot: true
-            runAsUser: 12021
-            runAsGroup: 12021
-            fsGroup: 12021
-          containers:
-            - name: renovate
-              image: ghcr.io/renovatebot/renovate:44.171.1@sha256:6fffb26e606488bf674f2d9400fc3fc6b2a0243a0c22a4a4d22e422ee44934c5
-              env:
-                - { name: RENOVATE_PLATFORM, value: github }
-                - { name: RENOVATE_REPOSITORIES, value: usenix17/ArgoCD }
-                - { name: RENOVATE_ONBOARDING, value: "false" }
-                - { name: RENOVATE_REQUIRE_CONFIG, value: required }
-                - { name: RENOVATE_GIT_AUTHOR, value: "Renovate Bot <renovate@starnix.net>" }
-                - { name: RENOVATE_BASE_DIR, value: /tmp/renovate }
-                - { name: HOME, value: /tmp }
-                - { name: LOG_LEVEL, value: info }
-                - name: RENOVATE_TOKEN
-                  valueFrom:
-                    secretKeyRef: { name: renovate-secrets, key: RENOVATE_TOKEN }
-                # Release notes lookups on github.com use the same PAT.
-                - name: RENOVATE_GITHUB_COM_TOKEN
-                  valueFrom:
-                    secretKeyRef: { name: renovate-secrets, key: RENOVATE_TOKEN }
-              resources:
-                requests: { cpu: 100m, memory: 256Mi }
-                limits: { memory: 1Gi }
-              securityContext:
-                allowPrivilegeEscalation: false
-                readOnlyRootFilesystem: true
-                capabilities: { drop: ["ALL"] }
-              volumeMounts:
-                - { name: tmp, mountPath: /tmp }
-          volumes:
-            - name: tmp
-              emptyDir: {}
+  secretRef: renovate-secrets
+  provider:
+    name: github
+  image: ghcr.io/renovatebot/renovate:44.171.1@sha256:6fffb26e606488bf674f2d9400fc3fc6b2a0243a0c22a4a4d22e422ee44934c5
+  parallelism: 1
+  discoveryFilters:
+    - usenix17/ArgoCD
+  # Label the pods so the egress lockdown below applies to them
+  metadata:
+    labels: { app: renovate }
+  serviceAccount:
+    automountServiceAccountToken: false
+  extraEnv:
+    - { name: RENOVATE_ONBOARDING, value: "false" }
+    - { name: RENOVATE_REQUIRE_CONFIG, value: required }
+    - { name: RENOVATE_GIT_AUTHOR, value: "Renovate Bot <renovate@starnix.net>" }
+    - { name: LOG_LEVEL, value: info }
+    # Release notes lookups on github.com use the same PAT.
+    - name: RENOVATE_GITHUB_COM_TOKEN
+      valueFrom:
+        secretKeyRef: { name: renovate-secrets, key: RENOVATE_TOKEN }
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 1Gi }
 
 ---
-# Renovate serves nothing and only needs GitHub and the registries.
+# Renovate job pods serve nothing and only need GitHub and the registries.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

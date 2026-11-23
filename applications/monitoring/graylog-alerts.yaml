@@ -1,0 +1,78 @@
+# Graylog runs in a Bastille jail on mimir (192.168.1.151), outside the
+# cluster. Its built-in Prometheus exporter listens on :9833. From Oct 1 to
+# Nov 22 2026 OpenSearch was full and nothing was indexed while Fluent Bit's
+# UDP sends kept "succeeding", so alert on Graylog's own indexing metrics.
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: graylog-mimir
+  namespace: monitoring
+  labels:
+    release: monitoring
+spec:
+  metricsPath: /api/metrics/prometheus
+  scrapeInterval: 30s
+  staticConfigs:
+    - targets:
+        - 192.168.1.151:9833
+      labels:
+        job: graylog
+        instance: graylog
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: graylog
+  namespace: monitoring
+  labels:
+    release: monitoring
+spec:
+  groups:
+    - name: graylog
+      rules:
+        - alert: GraylogDown
+          expr: up{job="graylog"} == 0
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Graylog exporter on mimir is unreachable"
+            description: >
+              Prometheus can't scrape 192.168.1.151:9833. Check the graylog
+              jail on mimir (service graylog / opensearch / mongod status).
+
+        - alert: GraylogNotIndexing
+          expr: sum(rate(gl_elasticsearch_output_writes_total{job="graylog"}[15m])) == 0
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Graylog has written nothing to OpenSearch for 30m"
+            description: >
+              Logs are arriving but not being stored. Usual cause: OpenSearch
+              stopped or hit its disk watermark (zroot/opensearch on mimir).
+
+        - alert: GraylogIndexFailures
+          expr: >
+            sum(rate(gl_elasticsearch_output_failures_total{job="graylog"}[15m]))
+            / sum(rate(gl_elasticsearch_output_writes_total{job="graylog"}[15m]))
+            > 0.05
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Over 5% of Graylog writes to OpenSearch are failing"
+            description: >
+              Check the index error log in Graylog. A read-only (flood-stage)
+              block from a full disk shows up here first.
+
+        - alert: GraylogJournalFilling
+          expr: max(gl_journal_utilization_ratio{job="graylog"}) > 0.5
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Graylog journal is {{ $value | humanizePercentage }} full"
+            description: >
+              Graylog is buffering faster than it can index. Once the journal
+              fills, incoming messages are dropped.

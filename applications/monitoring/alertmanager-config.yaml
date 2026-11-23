@@ -31,22 +31,6 @@ spec:
             value: InfoInhibitor
         receiver: "null"
       - matchers:
-          - name: alertname
-            matchType: "=~"
-            value: "KubeNodeNotReady|KubeNodeUnreachable"
-        receiver: pagerduty
-        groupBy: ['alertname', 'node']
-        repeatInterval: 4h
-        continue: true
-      # A matched child route skips the root receiver, so node-down needs
-      # its own Discord route
-      - matchers:
-          - name: alertname
-            matchType: "=~"
-            value: "KubeNodeNotReady|KubeNodeUnreachable"
-        receiver: discord
-        groupBy: ['alertname', 'node']
-      - matchers:
           - name: severity
             matchType: "="
             value: info
@@ -64,6 +48,51 @@ spec:
             matchType: "=~"
             value: "kube-controller-manager|kube-scheduler"
         receiver: "null"
+      - matchers:
+          - name: alertname
+            matchType: "=~"
+            value: "KubeNodeNotReady|KubeNodeUnreachable"
+        receiver: pagerduty
+        groupBy: ['alertname', 'node']
+        repeatInterval: 4h
+        continue: true
+      # A matched child route skips the root receiver, so node-down needs
+      # its own Discord route (continue so triage below also sees it)
+      - matchers:
+          - name: alertname
+            matchType: "=~"
+            value: "KubeNodeNotReady|KubeNodeUnreachable"
+        receiver: discord
+        groupBy: ['alertname', 'node']
+        continue: true
+      # Triage agent (out-of-cluster receiver). Placed after every null
+      # route so silenced alerts never reach it. Critical alerts need an
+      # explicit discord leg because a matched child skips the root.
+      - matchers:
+          - name: alertname
+            matchType: "=~"
+            value: "KubeNodeNotReady|KubeNodeUnreachable"
+        receiver: triage-agent
+        groupBy: ['alertname', 'node']
+        continue: true
+      - matchers:
+          - name: severity
+            matchType: "="
+            value: critical
+          - name: alertname
+            matchType: "!~"
+            value: "KubeNodeNotReady|KubeNodeUnreachable"
+        receiver: discord
+        continue: true
+      - matchers:
+          - name: severity
+            matchType: "="
+            value: critical
+          - name: alertname
+            matchType: "!~"
+            value: "KubeNodeNotReady|KubeNodeUnreachable"
+        receiver: triage-agent
+        continue: true
   receivers:
     - name: "null"
     - name: watcher-heartbeat
@@ -76,6 +105,16 @@ spec:
               credentials:
                 name: monitoring-secrets
                 key: watcherPushToken
+    - name: triage-agent
+      webhookConfigs:
+        - url: http://192.168.1.61:8090/alertmanager
+          sendResolved: false
+          httpConfig:
+            authorization:
+              type: Bearer
+              credentials:
+                name: monitoring-secrets
+                key: triagePushToken
     - name: discord
       discordConfigs:
         - apiURL:

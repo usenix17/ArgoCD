@@ -1,0 +1,73 @@
+# Global Alertmanager routing (referenced by alertmanagerSpec in
+# kube-prometheus-stack.yaml). Everything goes to Discord; only a node
+# being down also pages PagerDuty, which calls and texts.
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: alertmanager-routing
+  namespace: monitoring
+spec:
+  route:
+    receiver: discord
+    groupBy: ['alertname', 'cluster', 'namespace']
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 12h
+    routes:
+      - matchers:
+          - name: alertname
+            matchType: "=~"
+            value: "Watchdog|InfoInhibitor"
+        receiver: "null"
+      - matchers:
+          - name: alertname
+            matchType: "=~"
+            value: "KubeNodeNotReady|KubeNodeUnreachable"
+        receiver: pagerduty
+        groupBy: ['alertname', 'node']
+        repeatInterval: 4h
+        # Also post to Discord through the routes below
+        continue: true
+      - matchers:
+          - name: severity
+            matchType: "="
+            value: info
+        receiver: "null"
+      - matchers:
+          - name: alertname
+            matchType: "=~"
+            value: "KubeControllerManagerInstanceUnreachable|KubeSchedulerInstanceUnreachable"
+        receiver: "null"
+      - matchers:
+          - name: alertname
+            matchType: "="
+            value: TargetDown
+          - name: job
+            matchType: "=~"
+            value: "kube-controller-manager|kube-scheduler"
+        receiver: "null"
+  receivers:
+    - name: "null"
+    - name: discord
+      discordConfigs:
+        - apiURL:
+            name: monitoring-secrets
+            key: discordWebhookUrl
+          sendResolved: true
+    - name: pagerduty
+      pagerdutyConfigs:
+        - routingKey:
+            name: monitoring-secrets
+            key: pagerdutyRoutingKey
+          severity: critical
+          sendResolved: true
+  inhibitRules:
+    - sourceMatch:
+        - name: severity
+          matchType: "="
+          value: critical
+      targetMatch:
+        - name: severity
+          matchType: "="
+          value: warning
+      equal: ['alertname', 'namespace']

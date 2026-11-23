@@ -89,50 +89,11 @@ spec:
               - secretName: alertmanager-tls
                 hosts:
                   - alertmanager.starnix.net
-          config:
-            global:
-              resolve_timeout: 5m
-              pagerduty_url: https://events.pagerduty.com/v2/enqueue
-            route:
-              group_by: ['alertname', 'cluster', 'namespace']
-              group_wait: 30s
-              group_interval: 5m
-              repeat_interval: 4h
-              receiver: pagerduty
-              routes:
-                - matchers:
-                    - alertname = Watchdog
-                  receiver: "null"
-                - matchers:
-                    - alertname = InfoInhibitor
-                  receiver: "null"
-                - matchers:
-                    - severity = info
-                  receiver: "null"
-                - matchers:
-                    - alertname =~ "KubeControllerManagerInstanceUnreachable|KubeSchedulerInstanceUnreachable|KubeProxyInstanceUnreachable"
-                  receiver: "null"
-                - matchers:
-                    - alertname = TargetDown
-                    - job =~ "kube-controller-manager|kube-scheduler|kube-proxy"
-                  receiver: "null"
-            receivers:
-              - name: "null"
-              - name: pagerduty
-                pagerduty_configs:
-                  - routing_key_file: /etc/alertmanager/secrets/monitoring-secrets/pagerdutyRoutingKey
-                    send_resolved: true
-              # Discord: webhook_url_file not supported by prometheus-operator v0.91 schema.
-              # Add a separate discord receiver via alertmanager.starnix.net UI or use webhook_url inline.
-            inhibit_rules:
-              - source_matchers:
-                  - severity = critical
-                target_matchers:
-                  - severity = warning
-                equal: ['alertname', 'namespace']
           alertmanagerSpec:
-            secrets:
-              - monitoring-secrets
+            # Routing lives in alertmanager-config.yaml: an AlertmanagerConfig
+            # can read the Discord webhook from a secret, the chart config can't
+            alertmanagerConfiguration:
+              name: alertmanager-routing
             storage:
               volumeClaimTemplate:
                 metadata:
@@ -144,6 +105,10 @@ spec:
                   resources:
                     requests:
                       storage: 5Gi
+
+        # Cilium replaces kube-proxy on Talos, so its alerts never clear
+        kubeProxy:
+          enabled: false
 
         grafana:
           # Longhorn RWO PVC: RollingUpdate deadlocks on Multi-Attach

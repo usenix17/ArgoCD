@@ -26,8 +26,15 @@ spec:
         receiver: pagerduty
         groupBy: ['alertname', 'node']
         repeatInterval: 4h
-        # Also post to Discord through the routes below
         continue: true
+      # A matched child route skips the root receiver, so node-down needs
+      # its own Discord route
+      - matchers:
+          - name: alertname
+            matchType: "=~"
+            value: "KubeNodeNotReady|KubeNodeUnreachable"
+        receiver: discord
+        groupBy: ['alertname', 'node']
       - matchers:
           - name: severity
             matchType: "="

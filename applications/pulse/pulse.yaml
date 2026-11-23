@@ -166,8 +166,10 @@ spec:
           resources:
             # 512Mi OOMKilled once real load arrived (5-node PVE + host agents +
             # 5 k8s agents flushing buffers into the SQLite metrics store).
-            requests: { cpu: 100m, memory: 256Mi }
-            limits: { cpu: "1", memory: 1Gi }
+            # 1Gi OOMKilled too (peaks hit it before; 2026-11-22 node outage
+            # backlog pinned it at the limit while its disk was saturated).
+            requests: { cpu: 100m, memory: 512Mi }
+            limits: { cpu: "2", memory: 2Gi }
       volumes:
         - name: system-config-seed
           configMap:

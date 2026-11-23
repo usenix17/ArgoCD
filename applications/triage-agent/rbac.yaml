@@ -1,0 +1,70 @@
+# Identity for the out-of-cluster AI alert-triage agent (runs on beastyboi,
+# uses kubectl with this ServiceAccount's token). Strictly read-only: the
+# built-in `view` ClusterRole already excludes Secrets and nothing below adds
+# them, so the agent can diagnose but cannot read secrets or change anything.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: triage-agent
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: triage-agent
+  namespace: triage-agent
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: triage-agent-token
+  namespace: triage-agent
+  annotations:
+    kubernetes.io/service-account.name: triage-agent
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: triage-agent-view
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+  - kind: ServiceAccount
+    name: triage-agent
+    namespace: triage-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: triage-agent-read
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "events", "persistentvolumes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["longhorn.io"]
+    resources: ["volumes", "replicas", "engines", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: triage-agent-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: triage-agent-read
+subjects:
+  - kind: ServiceAccount
+    name: triage-agent
+    namespace: triage-agent

@@ -14,10 +14,21 @@ spec:
     groupInterval: 5m
     repeatInterval: 12h
     routes:
+      # Dead man's switch: the always-firing Watchdog is pushed to the
+      # out-of-cluster watcher (Gatus jail on beastyboi), which alerts when
+      # the pushes stop. Repeats every 2m; the watcher allows 10m of silence.
       - matchers:
           - name: alertname
-            matchType: "=~"
-            value: "Watchdog|InfoInhibitor"
+            matchType: "="
+            value: Watchdog
+        receiver: watcher-heartbeat
+        groupWait: 0s
+        groupInterval: 1m
+        repeatInterval: 2m
+      - matchers:
+          - name: alertname
+            matchType: "="
+            value: InfoInhibitor
         receiver: "null"
       - matchers:
           - name: alertname
@@ -55,6 +66,16 @@ spec:
         receiver: "null"
   receivers:
     - name: "null"
+    - name: watcher-heartbeat
+      webhookConfigs:
+        - url: http://192.168.1.60:8080/api/v1/endpoints/cluster_alertmanager-watchdog/external?success=true
+          sendResolved: false
+          httpConfig:
+            authorization:
+              type: Bearer
+              credentials:
+                name: monitoring-secrets
+                key: watcherPushToken
     - name: discord
       discordConfigs:
         - apiURL:

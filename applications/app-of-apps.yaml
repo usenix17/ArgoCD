@@ -993,6 +993,89 @@ spec:
       - CreateNamespace=true
 
 ---
+# Renovate operator: schedules the RenovateJob in applications/renovate and
+# serves a web UI at renovate.starnix.net (Authentik OIDC). Scoped to the
+# renovate namespace (no ClusterRole, no cluster-wide secret reads).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: renovate-operator
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://helm.mogenius.com/public
+    chart: renovate-operator
+    targetRevision: 6.10.0
+    helm:
+      releaseName: renovate-operator
+      values: |
+        fullnameOverride: renovate-operator
+        crd:
+          # Plain templates instead of a kubectl Job hook, so ArgoCD owns the CRDs
+          mode: template
+        rbac:
+          ownNamespaceOnly: true
+        policy:
+          enabled: true
+          allowedHosts:
+            - api.github.com
+            - github.com
+          allowedImages:
+            - ghcr.io/renovatebot/renovate
+        config:
+          # Keep the last few runs' Jobs (and their logs) for the UI
+          jobTTLSecondsAfterFinished: 259200
+        ingress:
+          enabled: true
+          ingressClassName: traefik
+          host: renovate.starnix.net
+          annotations:
+            cert-manager.io/cluster-issuer: letsencrypt-production
+            traefik.ingress.kubernetes.io/router.entrypoints: websecure
+            gethomepage.dev/enabled: "true"
+            gethomepage.dev/name: "Renovate"
+            gethomepage.dev/description: "Dependency updates"
+            gethomepage.dev/group: "Admin"
+            gethomepage.dev/icon: "renovate.png"
+            gethomepage.dev/href: "https://renovate.starnix.net"
+          tls:
+            - hosts:
+                - renovate.starnix.net
+              secretName: renovate-tls
+        auth:
+          oidc:
+            enabled: true
+            issuerUrl: https://auth.starnix.net/application/o/renovate/
+            clientId: renovate
+            existingSecret: renovate-oidc
+            secretKey: client-secret
+        authorization:
+          enabled: true
+          defaults:
+            adminUsers:
+              - sasha
+        metrics:
+          enabled: true
+          serviceMonitor:
+            enabled: true
+            labels:
+              release: monitoring
+        resources:
+          requests: { cpu: 20m, memory: 64Mi }
+          limits: { memory: 256Mi }
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: renovate
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+
+---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

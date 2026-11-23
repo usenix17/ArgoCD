@@ -86,6 +86,10 @@ spec:
         # Secret injected via env var below
         - --rfc2136-tsig-secret=$(EXTERNAL_DNS_RFC2136_TSIG_SECRET)
         - --rfc2136-tsig-secret-alg=hmac-sha256
+        # Read the zone back via TSIG-signed AXFR (knot's externaldns-update ACL
+        # allows transfer). Without it external-dns can't see existing
+        # records, re-adds everything each cycle and never deletes orphans.
+        - --rfc2136-tsig-axfr
         # TXT records track which records ExternalDNS owns; prefix avoids
         # colliding with application TXT records.
         - --txt-owner-id=external-dns-cluster

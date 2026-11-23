@@ -12,6 +12,7 @@ const REASONS = {
   build_error: "Build failed",
   build_timeout: "Timed out",
   trivy: "Trivy",
+  unpack: "Unpack failed",
   no_artifacts: "No packages",
   hash_mismatch: "Recipe changed",
   fetch_error: "Fetch failed",

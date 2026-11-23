@@ -1,0 +1,8 @@
+#!/bin/sh
+# bsdtar for aur-sandbox, installed ahead of /usr/bin on the sandbox PATH.
+#
+# Under gVisor the build dir (a kubelet emptyDir) shows the node's SELinux
+# label (security.selinux=...kubelet_state_t), and the label cannot be
+# removed. makepkg's bsdtar would record it on every packaged file, which
+# breaks extraction under gVisor and would ship a node label to clients.
+exec /usr/bin/bsdtar --no-xattrs "$@"

@@ -33,7 +33,8 @@ from .status import log_path
 log = logging.getLogger("aurmirror")
 
 # Failures that will repeat for the same commit; retried after the backoff window.
-BACKOFF_REASONS = {"build_error", "build_timeout", "trivy", "no_artifacts", "bad_deps"}
+BACKOFF_REASONS = {"build_error", "build_timeout", "trivy", "unpack", "no_artifacts",
+                   "bad_deps"}
 
 
 def import_validpgpkeys(work: Path, srcinfo: str, tee: LogTee) -> None:
@@ -64,20 +65,25 @@ def _gpg(work: Path, args: list[str], tee: LogTee | None, server: str = "") -> b
     return ok
 
 
-def trivy_clean(artifact: Path, tee: LogTee) -> bool:
+def trivy_clean(artifact: Path, tee: LogTee) -> str:
     """Scan the extracted package with Trivy; any error or finding fails closed.
 
     Trivy must scan the extracted tree: pointed at the tarball it scans nothing.
+    Returns "" when clean, else the hold reason: "unpack" or "trivy".
     """
-    try:
-        with tempfile.TemporaryDirectory(dir=cfg.BUILD_DIR) as tmp:
-            subprocess.run(["bsdtar", "-xpf", str(artifact), "-C", tmp], check=True)
+    with tempfile.TemporaryDirectory(dir=cfg.BUILD_DIR) as tmp:
+        try:
+            run_logged(["bsdtar", "-xpf", str(artifact), "-C", tmp], tee)
+        except (subprocess.CalledProcessError, OSError) as exc:
+            tee.line(f"Could not unpack {artifact.name} for scanning: {exc}")
+            return "unpack"
+        try:
             run_logged(["trivy", "rootfs", "--exit-code", "1", "--severity", cfg.FAIL_SEVS,
                         "--scanners", "vuln,secret", "--no-progress", tmp], tee)
-        return True
-    except (subprocess.CalledProcessError, OSError) as exc:
-        tee.line(f"Trivy failed for {artifact.name}: {exc}")
-        return False
+        except (subprocess.CalledProcessError, OSError) as exc:
+            tee.line(f"Trivy failed for {artifact.name}: {exc}")
+            return "trivy"
+    return ""
 
 
 def select_artifacts(artifacts: list[Path], wanted: set[str]) -> list[Path]:
@@ -193,8 +199,10 @@ def _make(entry: dict, scan: dict, ctx: BuildContext, tee: LogTee) -> tuple[dict
     artifacts = select_artifacts(built_artifacts(work / "src"), ctx.wanted)
     if not artifacts:
         return hold("no_artifacts", "build produced no allowlisted packages"), None
-    clean = [trivy_clean(a, tee) for a in artifacts]  # scan (and log) every artifact
-    if not all(clean):
+    found = {trivy_clean(a, tee) for a in artifacts}  # scan (and log) every artifact
+    if "unpack" in found:
+        return hold("unpack", "built package could not be unpacked for scanning"), None
+    if "trivy" in found:
         return hold("trivy", f"Trivy found {cfg.FAIL_SEVS} CVE or embedded secret"), None
     return {}, stage_artifacts(pkg, artifacts)
 

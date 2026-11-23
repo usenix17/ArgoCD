@@ -136,7 +136,7 @@ def update_failures(events: dict[str, dict], now: int) -> dict:
         if event.get("owner"):
             continue
         if event["result"] == "failed" and event.get("reason") in (
-                "build_error", "build_timeout", "trivy", "no_artifacts"):
+                "build_error", "build_timeout", "trivy", "unpack", "no_artifacts"):
             failures[pkg] = {"commit": event.get("commit"), "reason": event["reason"], "ts": now}
         elif event["result"] in ("published", "unchanged", "uptodate"):
             failures.pop(pkg, None)

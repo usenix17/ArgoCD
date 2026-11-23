@@ -1,6 +1,10 @@
 """Build-phase decisions: skipping, backoff, artifact filtering, keys, logs."""
+import os
 import subprocess
 import time
+from pathlib import Path
+
+import pytest
 
 from aurmirror import build
 from aurmirror import config as cfg
@@ -133,3 +137,39 @@ def test_log_outside_status_dir_degrades(tmp_path):
     tee = LogTee(tmp_path / "elsewhere.log")
     tee.line("still printed")
     assert tee.url is None
+
+
+def test_unpack_failure_is_not_reported_as_trivy(dirs):  # pylint: disable=unused-argument
+    """A package bsdtar cannot unpack holds as "unpack", not as a CVE finding."""
+    bad = cfg.BUILD_DIR / "t-1-1-any.pkg.tar.zst"
+    bad.write_bytes(b"not an archive")
+    tee = LogTee(cfg.STATUS_DIR / "t.log")
+    assert build.trivy_clean(bad, tee) == "unpack"
+    tee.close()
+    assert "Could not unpack" in (cfg.STATUS_DIR / "t.log").read_text()
+
+
+def test_trivy_finding_is_reported_as_trivy(dirs, monkeypatch):  # pylint: disable=unused-argument
+    """A Trivy non-zero exit after a clean unpack holds as "trivy"."""
+    def fake_run(cmd, tee):  # pylint: disable=unused-argument
+        if cmd[0] == "trivy":
+            raise subprocess.CalledProcessError(1, cmd)
+    monkeypatch.setattr(build, "run_logged", fake_run)
+    assert build.trivy_clean(cfg.BUILD_DIR / "t.pkg.tar.zst", LogTee(None)) == "trivy"
+
+
+def test_bsdtar_shim_drops_xattrs(tmp_path):
+    """The sandbox bsdtar never records xattrs such as a node SELinux label."""
+    shim = Path(__file__).resolve().parent.parent / "bsdtar-noxattrs"
+    if not Path("/usr/bin/bsdtar").exists():
+        pytest.skip("bsdtar not installed")
+    (tmp_path / "f").write_text("hi")
+    try:
+        os.setxattr(tmp_path / "f", "user.label", b"node")
+    except OSError:
+        pytest.skip("no user xattrs on this filesystem")
+    plain, shimmed = tmp_path / "plain.tar", tmp_path / "shim.tar"
+    subprocess.run(["bsdtar", "--format=pax", "-cf", plain, "-C", tmp_path, "f"], check=True)
+    subprocess.run(["sh", shim, "--format=pax", "-cf", shimmed, "-C", tmp_path, "f"], check=True)
+    assert b"user.label" in plain.read_bytes()
+    assert b"user.label" not in shimmed.read_bytes()

@@ -147,11 +147,6 @@ data:
       originRequest:
         noTLSVerify: true
         httpHostHeader: radiacode.starnix.net
-    - hostname: repeater.starnix.net
-      service: https://traefik.traefik.svc.cluster.local
-      originRequest:
-        noTLSVerify: true
-        httpHostHeader: repeater.starnix.net
     - hostname: argocd.starnix.net
       service: https://traefik.traefik.svc.cluster.local
       originRequest:

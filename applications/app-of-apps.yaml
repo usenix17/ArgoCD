@@ -1034,7 +1034,7 @@ spec:
   source:
     repoURL: https://falcosecurity.github.io/charts
     chart: falco
-    targetRevision: 9.1.0
+    targetRevision: 9.2.2
     helm:
       releaseName: falco
       values: |
@@ -1089,6 +1089,10 @@ spec:
           # plugin resolves and loads exactly once. On Talos the runtime sockets
           # are unreachable, so the plugin loads without enriching (alerts keep
           # full syscall/process/file/network context, minus k8s pod names).
+          # Chart 9.2+ masks the image's config.d with an emptyDir, so the image
+          # no longer adds `load_plugins: [container]`; load it explicitly.
+          load_plugins:
+            - container
           plugins:
             - name: container
               library_path: libcontainer.so

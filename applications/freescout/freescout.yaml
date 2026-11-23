@@ -170,11 +170,9 @@ spec:
           done
       containers:
       - name: freescout
-        image: tiredofit/freescout:latest
-        # IfNotPresent: use the cached image instead of re-pulling on every start.
-        # :latest defaults to Always, which forced a Docker Hub pull on reschedule
-        # and hit anonymous rate-limit/auth denials -> ImagePullBackOff despite the
-        # image being cached on-node. (Pin to a version tag/digest later.)
+        # tiredofit/freescout was deleted from Docker Hub (2026-11); the project
+        # moved to nfrastack. 2.x renamed some env vars and the log path.
+        image: docker.io/nfrastack/freescout:2.2.26@sha256:c6d6b78b9d3eb50e7ec8de6e891d03e31a603234899a5a7abf26d02d87c6fed1
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
@@ -192,9 +190,9 @@ spec:
             secretKeyRef:
               name: freescout-secrets
               key: db-password
-        - name: SITE_URL
+        - name: APP_URL
           value: "https://help.starnix.net"
-        - name: APP_CLOUDFLARE_IS_USED
+        - name: FREESCOUT_APP_CLOUDFLARE_IS_USED
           value: "true"
         - name: ADMIN_EMAIL
           value: "admin@starnix.net"
@@ -203,17 +201,15 @@ spec:
             secretKeyRef:
               name: freescout-secrets
               key: admin-password
-        - name: ENABLE_SSL_PROXY
-          value: "TRUE"
-        - name: DISPLAY_ERRORS
-          value: "FALSE"
+        - name: FREESCOUT_APP_DEBUG
+          value: "false"
         - name: TIMEZONE
           value: "America/Chicago"
         volumeMounts:
         - name: freescout-data
           mountPath: /data
         - name: freescout-logs
-          mountPath: /www/logs
+          mountPath: /logs
         resources:
           requests:
             cpu: 300m

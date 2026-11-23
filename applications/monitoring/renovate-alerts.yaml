@@ -1,0 +1,84 @@
+# Alerts on the renovate-operator metrics (applications/renovate). Before the
+# operator, a vanished OpenBao token broke every Renovate run for days and
+# only showed up as a Degraded ArgoCD app.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: renovate
+  namespace: monitoring
+  labels:
+    release: monitoring
+spec:
+  groups:
+    - name: renovate
+      rules:
+        - alert: RenovateOperatorDown
+          expr: up{job="renovate-operator"} == 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "renovate-operator metrics are unreachable"
+            description: >
+              Prometheus can't scrape the operator in the renovate namespace,
+              so no Renovate runs are being scheduled.
+
+        - alert: RenovateRunFailed
+          expr: max by (renovate_job, project) (renovate_operator_run_failed) == 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Renovate run for {{ $labels.project }} failed"
+            description: >
+              The last run failed. Check the project's logs at
+              https://renovate.starnix.net (a missing or expired token in
+              OpenBao cluster/renovate shows up here).
+
+        - alert: RenovateRunErrors
+          expr: max by (renovate_job, project) (renovate_operator_log_issues{level="error"}) > 0
+          # Two hourly runs in a row, so a single flaky lookup doesn't page
+          for: 2h
+          labels:
+            severity: warning
+          annotations:
+            summary: "Renovate logs {{ $value }} error(s) for {{ $labels.project }}"
+            description: >
+              Runs complete but log ERROR entries (e.g. a registry or
+              datasource lookup failing). See the run log in the UI.
+
+        - alert: RenovateNoRecentRun
+          expr: >
+            (sum(increase(renovate_operator_project_executions_total{status="completed"}[6h]))
+            or on() vector(0))
+            < 1
+          # Covers the counter restarting from 1 after an operator restart
+          for: 90m
+          labels:
+            severity: warning
+          annotations:
+            summary: "No completed Renovate run in 6h"
+            description: >
+              The hourly schedule isn't producing completed runs. Check that
+              the RenovateJob isn't suspended and the operator is scheduling.
+
+        - alert: RenovateSecretErrors
+          expr: sum(increase(renovate_operator_secret_resolution_errors_total[30m])) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: "renovate-operator can't resolve a Secret"
+            description: >
+              A Secret the RenovateJob references is missing or lacks a key
+              (renovate-secrets / renovate-oidc, synced from OpenBao by ESO).
+
+        - alert: RenovatePolicyDenied
+          expr: sum by (check) (increase(renovate_operator_policy_denials_total[30m])) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: "renovate-operator policy refused an action ({{ $labels.check }})"
+            description: >
+              A RenovateJob tried a destination, secret or image outside the
+              operator policy. Expected only after a config mistake; otherwise
+              treat it as suspicious.

@@ -126,7 +126,7 @@ spec:
           mountPath: /rendered-config
       containers:
       - name: wazuh-dashboard
-        image: wazuh/wazuh-dashboard:4.14.1
+        image: wazuh/wazuh-dashboard:4.14.10
         ports:
         - containerPort: 5601
         env:
@@ -139,6 +139,10 @@ spec:
               key: INDEXER_PASSWORD
         - name: WAZUH_API_URL
           value: "https://wazuh-manager"
+        # The image default became true in 4.14.10, but the API only maps
+        # "admin" to a role, so run_as would lock out other SSO users.
+        - name: RUN_AS
+          value: "false"
         - name: NODE_TLS_REJECT_UNAUTHORIZED
           value: "0"
         - name: DASHBOARD_USERNAME

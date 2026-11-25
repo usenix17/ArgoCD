@@ -127,7 +127,7 @@ spec:
           mountPath: /var/log/wazuh-indexer
       containers:
       - name: wazuh-indexer
-        image: wazuh/wazuh-indexer:4.14.1
+        image: wazuh/wazuh-indexer:4.14.10
         ports:
         - containerPort: 9200
         - containerPort: 9300

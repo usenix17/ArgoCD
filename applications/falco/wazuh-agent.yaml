@@ -4,7 +4,7 @@
 # (its env-var templating only fills CHANGE* placeholders and has no group
 # handling). This config connects to the manager, enrolls into the "falco" group
 # (so the manager pushes the shared <localfile> for /var/log/falco/events.json --
-# see applications/wazuh/shared/falco/agent.conf), and keeps the CHANGEE_AGENT_NAME
+# see applications/wazuh/shared/falco/agent.conf), and keeps the CHANGE_AGENT_NAME
 # placeholder so the image seds in the per-node name from WAZUH_AGENT_NAME.
 # No syscheck/rootcheck/syscollector here: these agents only ship Falco events.
 apiVersion: v1
@@ -29,7 +29,7 @@ data:
           <enabled>yes</enabled>
           <manager_address>wazuh-manager.wazuh.svc.cluster.local</manager_address>
           <port>1515</port>
-          <agent_name>CHANGEE_AGENT_NAME</agent_name>
+          <agent_name>CHANGE_AGENT_NAME</agent_name>
           <groups>falco</groups>
         </enrollment>
         <crypto_method>aes</crypto_method>
@@ -77,13 +77,13 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
       - name: wazuh-agent
-        # Must match the manager version (wazuh-manager is v4.14.1).
-        image: wazuh/wazuh-agent:4.14.1
+        # Must match the manager version (wazuh-manager is v4.14.10).
+        image: wazuh/wazuh-agent:4.14.10
         imagePullPolicy: IfNotPresent
         env:
         # k8s expands $(NODE_NAME) in a later env var referencing an earlier one,
         # giving each agent a stable, unique per-node name. The image seds this
-        # into the CHANGEE_AGENT_NAME placeholder in the mounted ossec.conf.
+        # into the CHANGE_AGENT_NAME placeholder in the mounted ossec.conf.
         - name: NODE_NAME
           valueFrom:
             fieldRef:

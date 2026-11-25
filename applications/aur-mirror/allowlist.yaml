@@ -599,3 +599,9 @@ data:
       - name: yp-tools
         approved: true
         note: dependency
+      - name: littlesnitch
+        approved: true
+        note: explicit -- first-party recipe; tracks the vendor's latest stable release, verified against their Sigstore-signed hash list
+        source: https://github.com/usenix17/littlesnitch.git
+        # Resolves the version itself, so its commit never moves on a release.
+        track: latest

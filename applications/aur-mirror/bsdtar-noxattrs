@@ -5,4 +5,14 @@
 # label (security.selinux=...kubelet_state_t), and the label cannot be
 # removed. makepkg's bsdtar would record it on every packaged file, which
 # breaks extraction under gVisor and would ship a node label to clients.
+#
+# List mode (-t) rejects --no-xattrs, and makepkg probes unknown sources
+# such as .deb files with bsdtar -t, so a failed probe skips extraction.
+for arg in "$@"; do
+	case "$arg" in
+	--list) exec /usr/bin/bsdtar "$@" ;;
+	--*) ;;
+	-*t*) exec /usr/bin/bsdtar "$@" ;;
+	esac
+done
 exec /usr/bin/bsdtar --no-xattrs "$@"

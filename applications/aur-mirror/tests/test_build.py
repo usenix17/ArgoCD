@@ -173,3 +173,17 @@ def test_bsdtar_shim_drops_xattrs(tmp_path):
     subprocess.run(["sh", shim, "--format=pax", "-cf", shimmed, "-C", tmp_path, "f"], check=True)
     assert b"user.label" in plain.read_bytes()
     assert b"user.label" not in shimmed.read_bytes()
+
+
+def test_bsdtar_shim_allows_list_mode(tmp_path):
+    """makepkg probes archives with bsdtar -t, which rejects --no-xattrs."""
+    shim = Path(__file__).resolve().parent.parent / "bsdtar-noxattrs"
+    if not Path("/usr/bin/bsdtar").exists():
+        pytest.skip("bsdtar not installed")
+    (tmp_path / "f").write_text("hi")
+    archive = tmp_path / "t.tar"
+    subprocess.run(["bsdtar", "-cf", archive, "-C", tmp_path, "f"], check=True)
+    for mode in (["-tf", archive, "-q", "*"], ["--list", "-f", archive]):
+        out = subprocess.run(["sh", shim, *mode], capture_output=True, text=True, check=False)
+        assert out.returncode == 0, out.stderr
+        assert out.stdout.strip() == "f"

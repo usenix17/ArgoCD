@@ -49,6 +49,12 @@ spec:
         secrets:
           existingSecret: semaphore-secrets
 
+        # The chart would mint a new runner token on every render (ArgoCD has
+        # no Helm lookup), restarting Semaphore daily.
+        runner:
+          existingSecret: semaphore-secrets
+          tokenKey: runnerToken
+
         admin:
           create: true
           existingSecret: semaphore-secrets

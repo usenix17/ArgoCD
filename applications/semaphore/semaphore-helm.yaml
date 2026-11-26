@@ -12,6 +12,10 @@ spec:
     helm:
       releaseName: semaphore
       values: |
+        # Chart 16.2.2 (latest) ships 2.18.3; pin the app image ahead of it.
+        image:
+          tag: v2.20.23
+
         ingress:
           enabled: true
           className: traefik

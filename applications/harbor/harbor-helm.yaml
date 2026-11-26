@@ -36,6 +36,17 @@ spec:
         # 16-char encryption key from Vault-managed secret
         existingSecretSecretKey: harbor-secrets
 
+        # Pin the internal secrets the chart would otherwise regenerate on
+        # every render (ArgoCD has no Helm lookup), restarting Harbor daily.
+        core:
+          existingSecret: harbor-secrets        # key: secret
+          secretName: harbor-secrets            # key: tls.key (token signing)
+          existingXsrfSecret: harbor-secrets
+          existingXsrfSecretKey: CSRF_KEY
+        jobservice:
+          existingSecret: harbor-secrets
+          existingSecretKey: JOBSERVICE_SECRET
+
         persistence:
           enabled: true
           resourcePolicy: "keep"
@@ -61,6 +72,13 @@ spec:
           internal:
             existingSecret: harbor-secrets
             existingSecretPasswordKey: POSTGRES_PASSWORD
+
+        registry:
+          existingSecret: harbor-secrets
+          existingSecretKey: REGISTRY_HTTP_SECRET
+          credentials:
+            # keys: REGISTRY_PASSWD and REGISTRY_HTPASSWD (bcrypt, fixed salt)
+            existingSecret: harbor-secrets
 
         redis:
           type: internal
